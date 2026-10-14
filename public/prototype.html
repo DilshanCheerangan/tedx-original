@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>R—K Hero Shader</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    canvas#c {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// =====================================================================
+//  R—K Hero Shader — Exact recreation from UnicornStudio JSON config
+//  Pipeline:  Black BG → Portrait + DepthParallax → FBM → Dither
+// =====================================================================
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, premultipliedAlpha: false });
+if (!gl) { document.body.textContent = 'WebGL 2 required'; throw 0; }
+
+/* ─── helpers ────────────────────────────────────────────── */
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s), '\n', src);
+    return null;
+  }
+  return s;
+}
+function link(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(p));
+    return null;
+  }
+  return p;
+}
+function makeFBO(w, h) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { fb, tex, w, h };
+}
+function loadImg(url) {
+  return new Promise((res, rej) => {
+    const i = new Image(); i.crossOrigin = ''; i.onload = () => res(i); i.onerror = rej; i.src = url;
+  });
+}
+function uploadTex(img) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  // Do NOT flip — shader handles Y-flip explicitly like the original
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  return t;
+}
+
+/* ─── fullscreen quad ───────────────────────────────────── */
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+const vb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+  -1,-1, 0,0,  1,-1, 1,0,  -1,1, 0,1,  1,1, 1,1
+]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
+gl.enableVertexAttribArray(1);
+gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
+gl.bindVertexArray(null);
+
+function quad() { gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
+
+/* ─── passthrough vertex shader ─────────────────────────── */
+const VS = `#version 300 es
+precision highp float;
+layout(location=0) in vec2 p;
+layout(location=1) in vec2 t;
+out vec2 vUV;
+void main(){ vUV=t; gl_Position=vec4(p,0,1); }`;
+
+/* ═══════════════════════════════════════════════════════════
+   PASS 1 — Portrait + Depth-Map Parallax
+   Sources: image layer + depthMap layer (verbatim from JSON)
+   ═══════════════════════════════════════════════════════════ */
+const FS_IMAGE = `#version 300 es
+precision highp float;
+precision highp int;
+in vec2 vUV;
+out vec4 fragColor;
+
+uniform sampler2D uSourceImage;
+uniform sampler2D uDepthMap;
+uniform vec2 uResolution;
+uniform vec2 uMousePos;     // depth parallax mouse (momentum 0.92)
+uniform float uExposure;
+uniform float uOpacity;
+
+// ── cover-fit UV (from depth map shader) ──
+vec2 getCoverUV(vec2 uv, vec2 texSize, vec2 canvasSize) {
+  float texAspect = texSize.x / texSize.y;
+  float canAspect = canvasSize.x / canvasSize.y;
+  vec2 c = uv;
+  if (canAspect < texAspect) {
+    float s = canAspect / texAspect;
+    c.x = uv.x * s + (1.0 - s) * 0.5;
+  } else {
+    float s = texAspect / canAspect;
+    c.y = uv.y * s + (1.0 - s) * 0.5;
+  }
+  return c;
+}
+
+// ── depth from depth-map (original) ──
+float getDepth(vec2 uv) {
+  vec2 texSize = vec2(textureSize(uDepthMap, 0));
+  vec2 coverUV = getCoverUV(uv, texSize, uResolution);
+  vec4 dc = texture(uDepthMap, coverUV);
+  float d = dot(dc.rgb, vec3(0.299, 0.587, 0.114));
+  return 1.0 - d;
+}
+
+// ── sample portrait with cover fit + Y flip (original image shader) ──
+vec4 samplePortrait(vec2 uv) {
+  vec2 texSize = vec2(textureSize(uSourceImage, 0));  // 2326 × 1290
+  vec2 coverUV = getCoverUV(uv, texSize, uResolution);
+  vec2 flippedUV = vec2(coverUV.x, 1.0 - coverUV.y);
+  if (coverUV.x < 0.0 || coverUV.x > 1.0 || coverUV.y < 0.0 || coverUV.y > 1.0)
+    return vec4(0.0);
+  return textureLod(uSourceImage, flippedUV, 0.0);
+}
+
+void main() {
+  vec2 uv = vUV;
+
+  // ── Depth-map parallax occlusion (verbatim) ──
+  vec2 mouseOffset = (uMousePos - 0.5) * 0.82;
+  vec2 parallaxDir = mouseOffset * 0.24 * 0.2;
+  float layerDepth = 1.0 / 16.0 * 0.5;
+  float currentLayerDepth = 0.0;
+
+  vec2 currentUv = uv;
+  vec2 prevUv = currentUv;
+  float currentDepth = getDepth(currentUv);
+  float prevDepth = currentDepth;
+
+  for (int i = 0; i < 16; i++) {
+    if (currentDepth < currentLayerDepth) break;
+    currentLayerDepth += layerDepth;
+    prevUv = currentUv;
+    prevDepth = currentDepth;
+    currentUv -= parallaxDir * layerDepth;
+    currentDepth = getDepth(currentUv);
+  }
+
+  float beforeDepth = prevDepth - (currentLayerDepth - layerDepth);
+  float afterDepth  = currentDepth - currentLayerDepth;
+  float weight = beforeDepth / (beforeDepth - afterDepth + 1e-5);
+  weight = clamp(weight, 0.0, 1.0);
+  vec2 offsetUv = mix(prevUv, currentUv, weight);
+
+  // ── Sample image at parallax-offset UV ──
+  vec4 color = samplePortrait(offsetUv);
+
+  // ── Exposure adjustment (original) ──
+  if (uExposure != 0.0) {
+    vec3 ec = clamp(color.rgb + uExposure, 0.0, 1.0);
+    color.rgb = mix(color.rgb, ec, color.a);
+  }
+  color.rgb = clamp(color.rgb, 0.0, 1.0);
+  color.rgb *= color.a;
+
+  // ── Composite with opacity onto black BG (original composite shader) ──
+  vec4 bg = vec4(0.0, 0.0, 0.0, 1.0);
+  fragColor = mix(bg, color + bg * (1.0 - color.a), uOpacity);
+}`;
+
+/* ═══════════════════════════════════════════════════════════
+   PASS 2 — FBM Distortion  (verbatim from JSON)
+   ═══════════════════════════════════════════════════════════ */
+const FS_FBM = `#version 300 es
+precision highp float;
+in vec2 vUV;
+out vec4 fragColor;
+
+uniform sampler2D uTexture;
+uniform float uTime;
+uniform float uMixRadius;
+uniform vec2 uMousePos;
+uniform vec2 uResolution;
+
+float ease(float t) {
+  return t < 0.5
+    ? (1.0 - sqrt(1.0 - 4.0*t*t)) / 2.0
+    : (sqrt(-((2.0*t)-3.0)*((2.0*t)-1.0)) + 1.0) / 2.0;
+}
+
+vec3 hash33(vec3 p3) {
+  p3 = fract(p3 * vec3(0.1031, 0.11369, 0.13787));
+  p3 += dot(p3, p3.yxz + 19.19);
+  return -1.0 + 2.0 * fract(vec3(
+    (p3.x+p3.y)*p3.z,
+    (p3.x+p3.z)*p3.y,
+    (p3.y+p3.z)*p3.x));
+}
+
+float perlin_noise(vec3 p) {
+  vec3 pi = floor(p);
+  vec3 pf = p - pi;
+  vec3 w  = pf*pf*(3.0-2.0*pf);
+  float n000=dot(pf-vec3(0,0,0),hash33(pi+vec3(0,0,0)));
+  float n100=dot(pf-vec3(1,0,0),hash33(pi+vec3(1,0,0)));
+  float n010=dot(pf-vec3(0,1,0),hash33(pi+vec3(0,1,0)));
+  float n110=dot(pf-vec3(1,1,0),hash33(pi+vec3(1,1,0)));
+  float n001=dot(pf-vec3(0,0,1),hash33(pi+vec3(0,0,1)));
+  float n101=dot(pf-vec3(1,0,1),hash33(pi+vec3(1,0,1)));
+  float n011=dot(pf-vec3(0,1,1),hash33(pi+vec3(0,1,1)));
+  float n111=dot(pf-vec3(1,1,1),hash33(pi+vec3(1,1,1)));
+  return mix(
+    mix(mix(n000,n100,w.x), mix(n010,n110,w.x), w.y),
+    mix(mix(n001,n101,w.x), mix(n011,n111,w.x), w.y),
+    w.z);
+}
+
+const float PI = 3.14159265359;
+mat2 rot(float a){ return mat2(cos(a),-sin(a),sin(a),cos(a)); }
+
+// Pre-computed rotation matrix for 0.5 radians (original)
+mat2 rotHalf = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
+
+float fbm(in vec3 st) {
+  float value = 0.0;
+  float amp = 0.25;
+  float aM = 0.1 + 0.86 * 0.65;     // 0.659
+  vec2 shift = vec2(100.0);
+  for (int i = 0; i < 8; i++) {
+    value += amp * perlin_noise(st);
+    st.xy *= rotHalf * 2.5;
+    st.xy += shift;
+    amp *= aM;
+  }
+  return value;
+}
+
+void main() {
+  vec2 uv = vUV;
+  float ar = uResolution.x / uResolution.y;
+
+  // Scale factor (original)
+  float mul = 6.0 * (0.57 / ((ar + 1.0) / 2.0));
+
+  // Mouse position — only 4 % tracking (original trackMouse = 0.04)
+  vec2 mPos = vec2(0.5) + (uMousePos - 0.5) * 0.04;
+
+  // After appear animation mixRadius < 1 → floor(0.44)=0 → pos = center
+  vec2 pos = mix(vec2(0.5), mPos, floor(uMixRadius));
+
+  // Radial falloff from center (original easing func 15 = circInOut)
+  float mDist = ease(max(0.0,
+    1.0 - distance(uv * vec2(ar,1.0), mPos * vec2(ar,1.0))
+        * 4.0 * (1.0 - uMixRadius)));
+
+  // Skew: compress Y to 25% (original 0.75)  → vec2(1, 0.25)
+  vec2 skew = mix(vec2(1.0), vec2(1.0, 0.0), 0.75);
+
+  // Noise-space coordinates
+  vec2 st = ((uv - pos) * vec2(ar, 1.0)) * mul * ar;
+  st = rot(0.0) * st * skew;   // rotation = 0
+
+  // Drift upward (original: speed × direction × scale)
+  vec2 drift = vec2(0.0, uTime * 0.005) * (0.5 * 2.0);
+
+  // FBM time evolution
+  float time = uTime * 0.025;
+
+  // Two-pass warped FBM (original)
+  vec2 r = vec2(
+    fbm(vec3(st - drift + vec2(1.7, 9.2), time)),
+    fbm(vec3(st - drift + vec2(8.2, 1.3), time))
+  );
+  float f = fbm(vec3(st + r - drift, time)) * 0.35;
+
+  // Final displacement
+  vec2 offset = f * 2.0 + r * 0.35;
+
+  fragColor = texture(uTexture, uv + offset * mDist);
+}`;
+
+/* ═══════════════════════════════════════════════════════════
+   PASS 3 — Dither / Film Grain  (verbatim from JSON)
+   ═══════════════════════════════════════════════════════════ */
+const FS_DITHER = `#version 300 es
+precision highp float;
+precision highp int;
+in vec2 vUV;
+out vec4 fragColor;
+
+uniform sampler2D uTexture;
+uniform float uTime;
+
+uvec2 pcg2d(uvec2 v) {
+  v = v * 1664525u + 1013904223u;
+  v.x += v.y*v.y * 1664525u + 1013904223u;
+  v.y += v.x*v.x * 1664525u + 1013904223u;
+  v ^= v >> 16;
+  v.x += v.y*v.y * 1664525u + 1013904223u;
+  v.y += v.x*v.x * 1664525u + 1013904223u;
+  return v;
+}
+float randFibo(vec2 p) {
+  uvec2 v = floatBitsToUint(p);
+  v = pcg2d(v);
+  return float(v.x ^ v.y) / float(0xffffffffu);
+}
+vec3 dither(vec3 c, vec2 st) {
+  float d = floor(uTime);
+  vec2 off = vec2(randFibo(vec2(123,16)+d), randFibo(vec2(56,96)+d));
+  float n = randFibo(st + off) - 0.005;
+  float levels = 1.0 / max(0.0001, 0.08);   // threshold = 0.08
+  return floor(c * levels + n) / levels;
+}
+
+void main() {
+  vec4 c = texture(uTexture, vUV);
+  if (c.a == 0.0) { fragColor = vec4(0); return; }
+  c.rgb = dither(c.rgb, vUV);  // mix = 1.0 (full)
+  fragColor = c;
+}`;
+
+/* ─── state ──────────────────────────────────────────────── */
+let W, H;
+let fboA, fboB;
+let pImage, pFBM, pDither;
+let texPortrait = null, texDepth = null;
+
+// Mouse: separate smooth values for depth (momentum 0.92) vs FBM (momentum 1.0)
+let rawMX = 0.5, rawMY = 0.5;
+let depthMX = 0.5, depthMY = 0.5;   // momentum 0.92
+let fbmMX  = 0.5, fbmMY  = 0.5;     // momentum 1.0
+
+let t0 = 0;            // animation start time
+let lastNow = 0;       // previous frame timestamp
+let fbmAccTime = 0;    // accumulated FBM time (frame-count based)
+let ditherAccTime = 0;  // accumulated dither time (frame-count based)
+let loaded = false;
+
+// Original scene FPS = 24
+const BASE_FPS = 24;
+
+/* ─── mouse ──────────────────────────────────────────────── */
+document.addEventListener('mousemove', e => {
+  rawMX = e.clientX / window.innerWidth;
+  rawMY = 1.0 - e.clientY / window.innerHeight;   // flip Y for GL
+});
+document.addEventListener('touchmove', e => {
+  const t = e.touches[0];
+  rawMX = t.clientX / window.innerWidth;
+  rawMY = 1.0 - t.clientY / window.innerHeight;
+}, { passive: true });
+
+/* ─── resize ─────────────────────────────────────────────── */
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio, 1.5);
+  W = Math.floor(canvas.clientWidth  * dpr);
+  H = Math.floor(canvas.clientHeight * dpr);
+  canvas.width  = W;
+  canvas.height = H;
+
+  // FBM runs at 0.75× downsample (original userDownsample)
+  const fbmW = Math.floor(W * 0.75);
+  const fbmH = Math.floor(H * 0.75);
+
+  if (fboA) { gl.deleteFramebuffer(fboA.fb); gl.deleteTexture(fboA.tex); }
+  if (fboB) { gl.deleteFramebuffer(fboB.fb); gl.deleteTexture(fboB.tex); }
+  fboA = makeFBO(W, H);
+  fboB = makeFBO(fbmW, fbmH);
+}
+window.addEventListener('resize', resize);
+
+/* ─── easing functions (from original JSON) ──────────────── */
+function easeOutQuart(s)   { return 1 - Math.pow(1-s, 4); }
+function easeInOutQuart(s) { return s<.5 ? 8*s**4 : 1-Math.pow(-2*s+2,4)/2; }
+function easeInOutCubic(s) { return s<.5 ? 4*s*s*s : 1-Math.pow(-2*s+2,3)/2; }
+
+/* ─── uniform helper ─────────────────────────────────────── */
+function U(prog, name) { return gl.getUniformLocation(prog, name); }
+
+/* ─── render loop ────────────────────────────────────────── */
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!loaded) return;
+
+  // Delta time in seconds (capped to avoid jumps on tab switch)
+  const dt = lastNow ? Math.min((now - lastNow) / 1000, 0.1) : 1 / 60;
+  lastNow = now;
+
+  const sec = (now - t0) / 1000;   // seconds since textures loaded
+
+  // ── Mouse momentum smoothing (per-frame lerp) ──
+  // depth: momentum 0.92  →  lerp rate ≈ 1-0.92 = 0.08
+  // fbm:   momentum 1.0   →  very slow follow (trackMouse=0.04 handles actual tracking)
+  depthMX += (rawMX - depthMX) * 0.08;
+  depthMY += (rawMY - depthMY) * 0.08;
+  fbmMX  += (rawMX - fbmMX)  * 0.03;
+  fbmMY  += (rawMY - fbmMY)  * 0.03;
+
+  // ── Appear animations (exact durations & easings from JSON) ──
+  // opacity: 0→1, 500ms, delay 100ms, easeOutQuart
+  const opP = Math.min(Math.max(sec - 0.1, 0) / 0.5, 1);
+  const opacity = easeOutQuart(opP);
+
+  // exposure: -0.5→0, 800ms, delay 0, easeInOutQuart
+  const exP = Math.min(sec / 0.8, 1);
+  const exposure = -0.5 + 0.5 * easeInOutQuart(exP);
+
+  // mixRadius: 1→0.44, 1000ms, delay 0, easeInOutCubic
+  const mrP = Math.min(sec / 1.0, 1);
+  const mixRadius = 1.0 + (0.44 - 1.0) * easeInOutCubic(mrP);
+
+  // speed: 0.35→0.12, 900ms, delay 0, easeInOutQuart
+  const spP = Math.min(sec / 0.9, 1);
+  const speed = 0.35 + (0.12 - 0.35) * easeInOutQuart(spP);
+
+  // ── Time accumulation (UnicornStudio convention) ──
+  // uTime increments by `speed` each frame at BASE_FPS.
+  // We normalize dt to the 24fps base rate so animation
+  // speed matches regardless of actual refresh rate.
+  fbmAccTime    += speed * dt * BASE_FPS;
+  ditherAccTime += 0.5  * dt * BASE_FPS;   // dither layer speed = 0.5
+
+  // ═══════ PASS 1 — Image + Depth Parallax → FBO A ═══════
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fboA.fb);
+  gl.viewport(0, 0, fboA.w, fboA.h);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  gl.useProgram(pImage);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texPortrait);
+  gl.uniform1i(U(pImage, 'uSourceImage'), 0);
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, texDepth);
+  gl.uniform1i(U(pImage, 'uDepthMap'), 1);
+  gl.uniform2f(U(pImage, 'uResolution'), fboA.w, fboA.h);
+  gl.uniform2f(U(pImage, 'uMousePos'), depthMX, depthMY);
+  gl.uniform1f(U(pImage, 'uExposure'), exposure);
+  gl.uniform1f(U(pImage, 'uOpacity'), opacity);
+  quad();
+
+  // ═══════ PASS 2 — FBM Distortion → FBO B ═══════
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fboB.fb);
+  gl.viewport(0, 0, fboB.w, fboB.h);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  gl.useProgram(pFBM);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, fboA.tex);
+  gl.uniform1i(U(pFBM, 'uTexture'), 0);
+  gl.uniform2f(U(pFBM, 'uResolution'), fboB.w, fboB.h);
+  gl.uniform2f(U(pFBM, 'uMousePos'), fbmMX, fbmMY);
+  gl.uniform1f(U(pFBM, 'uTime'), fbmAccTime);
+  gl.uniform1f(U(pFBM, 'uMixRadius'), mixRadius);
+  quad();
+
+  // ═══════ PASS 3 — Dither → Screen ═══════
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, W, H);
+  gl.clearColor(0, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+
+  gl.useProgram(pDither);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, fboB.tex);
+  gl.uniform1i(U(pDither, 'uTexture'), 0);
+  gl.uniform1f(U(pDither, 'uTime'), ditherAccTime);
+  quad();
+}
+
+/* ─── init ───────────────────────────────────────────────── */
+async function init() {
+  pImage  = link(VS, FS_IMAGE);
+  pFBM    = link(VS, FS_FBM);
+  pDither = link(VS, FS_DITHER);
+
+  resize();
+
+  const [imgP, imgD] = await Promise.all([
+    loadImg('https://raviklaassens.b-cdn.net/Website/unicorn/PORTRAIT_RAVI.webp'),
+    loadImg('https://raviklaassens.b-cdn.net/Website/unicorn/RAVI_PORTRAIT_depth.png'),
+  ]);
+  texPortrait = uploadTex(imgP);
+  texDepth    = uploadTex(imgD);
+
+  t0 = performance.now();
+  lastNow = t0;
+  loaded = true;
+  requestAnimationFrame(frame);
+}
+
+init();
+</script>
+</body>
+</html>

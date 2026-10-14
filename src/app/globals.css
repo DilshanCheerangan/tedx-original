@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #000000;
+  --color-foreground: #ffffff;
+  --color-border: rgba(255, 255, 255, 0.2);
+}
+
+@font-face {
+  font-family: 'Arnprior';
+  src: url('/arnprior/Arnprior.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@utility font-arnprior {
+  font-family: 'Arnprior', serif;
+}
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  background: #000;
+  scroll-behavior: smooth;
+}
