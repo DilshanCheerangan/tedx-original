@@ -66,7 +66,7 @@ export default function ScheduleSection() {
             <div className="w-[2px] bg-white/10 absolute top-0 bottom-0 left-1/2 -translate-x-1/2" />
             <motion.div
               animate={isInView ? { scaleY: 1 } : { scaleY: 0 }}
-              transition={{ duration: 2.5, ease: [0.25, 0.46, 0.45, 0.94] }}
+              transition={{ duration: 2.5, ease: [0.25, 0.46, 0.45, 0.94] as const }}
               className="w-[2px] bg-gradient-to-b from-red-600 via-red-400 to-red-600/20 absolute top-0 left-1/2 -translate-x-1/2 origin-top"
               style={{ height: "100%" }}
             />
