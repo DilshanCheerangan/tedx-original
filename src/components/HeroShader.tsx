@@ -289,9 +289,9 @@ export default function HeroShader({
       lastNow = now;
       const sec = (now - t0) / 1000;
 
-      // ── Mouse momentum smoothing (snappy dial response) ──
-      depthMX += (rawMX - depthMX) * 0.2;
-      depthMY += (rawMY - depthMY) * 0.2;
+      // ── Mouse momentum smoothing (silky, weighted mechanical dial response) ──
+      depthMX += (rawMX - depthMX) * 0.12;
+      depthMY += (rawMY - depthMY) * 0.12;
       fbmMX += (rawMX - fbmMX) * 0.05;
       fbmMY += (rawMY - fbmMY) * 0.05;
 

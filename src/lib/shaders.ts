@@ -220,20 +220,20 @@ void main() {
     // Angle from center
     float angle = atan(aspectUv.y - aspectCenter.y, aspectUv.x - aspectCenter.x);
 
-    // Widely contrasting gear speeds across the 12 concentric rings
+    // Moderate, elegant gear speeds across the 12 concentric rings
     float ringSpeeds[12] = float[12](
-      0.8,   // Ring 0: slow, heavy central dial
-      -8.2,  // Ring 1: fast spin counter-clockwise
-      2.5,   // Ring 2: medium clockwise
-      -11.8, // Ring 3: high-speed whip counter-clockwise
-      1.3,   // Ring 4: sluggish glide clockwise
-      -14.6, // Ring 5: ultra-fast turbine spin counter-clockwise
-      3.7,   // Ring 6: moderate speed clockwise
-      -10.2, // Ring 7: fast counter-clockwise
-      0.9,   // Ring 8: heavy slow crawl clockwise
-      -6.8,  // Ring 9: moderate counter-clockwise
-      3.2,   // Ring 10: medium-fast clockwise
-      -9.5   // Ring 11: outer ring counter-clockwise
+      0.6,   // Ring 0: slow, heavy central dial
+      -3.8,  // Ring 1: gentle counter-clockwise
+      1.8,   // Ring 2: medium clockwise
+      -5.2,  // Ring 3: counter-clockwise
+      1.1,   // Ring 4: sluggish glide clockwise
+      -6.4,  // Ring 5: steady counter-clockwise
+      2.4,   // Ring 6: moderate clockwise
+      -4.9,  // Ring 7: smooth counter-clockwise
+      0.8,   // Ring 8: heavy slow crawl clockwise
+      -3.4,  // Ring 9: moderate counter-clockwise
+      2.1,   // Ring 10: medium clockwise
+      -4.2   // Ring 11: outer ring counter-clockwise
     );
 
     float speed = ringSpeeds[ringIndex];
@@ -280,14 +280,14 @@ void main() {
     float excessText = max(0.0, (uMousePos.x - 0.28) - holdRadius);
     float tText = clamp(excessText / easeRange, 0.0, 1.0);
     float effectiveDeltaText = excessText * (tText * tText);
-    float rotText = effectiveDeltaText * speed * 3.8 + textImperfect[ringIndex];
+    float rotText = effectiveDeltaText * speed * 1.7 + textImperfect[ringIndex];
 
     // ── ALIGNMENT POINT 2: HERO STATUE ALIGNED from 0.72 all the way to 1.0 (Right Edge Zone) ──
     // Fully resolved anywhere between 0.72 and 1.0. Only starts twisting if mouse moves left below 0.72 - holdRadius
     float excessHero = max(0.0, (0.72 - uMousePos.x) - holdRadius);
     float tHero = clamp(excessHero / easeRange, 0.0, 1.0);
     float effectiveDeltaHero = -excessHero * (tHero * tHero);
-    float rotHero = effectiveDeltaHero * speed * 3.8 + heroImperfect[ringIndex];
+    float rotHero = effectiveDeltaHero * speed * 1.7 + heroImperfect[ringIndex];
 
     // 1. Digital UI sample UV (Text + Crosshairs, solves at Mouse X = 0.28)
     float textAngle = angle + rotText;
