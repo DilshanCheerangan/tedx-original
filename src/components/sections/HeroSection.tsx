@@ -166,11 +166,11 @@ export default function HeroSection() {
 
         {/* ── Date text ── */}
         <motion.div
-          style={{ opacity: buttonsOpacity }}
+          style={{ opacity: uiVisible ? buttonsOpacity : undefined }}
           className="absolute top-[62%] left-[10%] md:left-[16%] z-40 pointer-events-none"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: uiVisible ? 1 : 0 }}
-          transition={{ duration: 0.9, ease: "easeOut" }}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: uiVisible ? 1 : 0, y: uiVisible ? 0 : 12 }}
+          transition={{ duration: 1.1, ease: "easeOut", delay: 0.15 }}
         >
           <p className="text-white/80 text-sm md:text-lg tracking-[0.3em] uppercase font-light">on jan 31 2026</p>
         </motion.div>
