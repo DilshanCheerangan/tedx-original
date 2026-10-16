@@ -23,9 +23,9 @@ const T_RESOLVE_DUR   = 1600;
 const T_DONE          = 3400;
 
 // Position constants matching the shader's alignment points
-const POS_ALIGNED = 0.72; // hero / bg aligned
-const POS_SCATTER = 0.02; // fully dis-aligned
-const POS_TITLE   = 0.28; // ANOMALY title aligned
+const POS_ALIGNED = 0.85; // hero / bg aligned zone
+const POS_SCATTER = 0.50; // fully scrambled / dis-aligned middle zone
+const POS_TITLE   = 0.20; // ANOMALY title aligned zone
 
 type IntroPhase = "aligned" | "scatter" | "resolve" | "done";
 

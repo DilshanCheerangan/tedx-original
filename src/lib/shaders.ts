@@ -270,26 +270,23 @@ void main() {
     );
 
     // ── MAGNETIC SNAP SETTINGS (Controls how long alignment holds) ──
-    // holdRadius: ±distance (fraction of screen width) where puzzle stays 100% locked
-    // 0.025 gives a balanced ~5% screen-width sweet spot (responsive yet stable)
-    float holdRadius = 0.025;
-    // easeRange: soft transition distance beyond hold zone so gears turn smoothly
-    float easeRange = 0.045;
+    // holdRadius: distance inward toward the center where alignment stays locked
+    float holdRadius = 0.035;
+    // easeRange: soft transition zone into the scrambled middle section
+    float easeRange = 0.055;
 
-    // ── ALIGNMENT POINT 1: TEXT ALIGNS (~90%) at Mouse X = 0.28 (Left side) ──
-    float diffText = uMousePos.x - 0.28;
-    float distText = abs(diffText);
-    float excessText = max(0.0, distText - holdRadius);
+    // ── ALIGNMENT POINT 1: TEXT ALIGNED from 0.0 all the way to 0.28 (Left Edge Zone) ──
+    // Fully resolved anywhere between 0.0 and 0.28. Only starts twisting if mouse moves right beyond 0.28 + holdRadius
+    float excessText = max(0.0, (uMousePos.x - 0.28) - holdRadius);
     float tText = clamp(excessText / easeRange, 0.0, 1.0);
-    float effectiveDeltaText = sign(diffText) * excessText * (tText * tText);
+    float effectiveDeltaText = excessText * (tText * tText);
     float rotText = effectiveDeltaText * speed * 3.8 + textImperfect[ringIndex];
 
-    // ── ALIGNMENT POINT 2: HERO STATUE ALIGNS (~90%) at Mouse X = 0.72 (Right side) ──
-    float diffHero = uMousePos.x - 0.72;
-    float distHero = abs(diffHero);
-    float excessHero = max(0.0, distHero - holdRadius);
+    // ── ALIGNMENT POINT 2: HERO STATUE ALIGNED from 0.72 all the way to 1.0 (Right Edge Zone) ──
+    // Fully resolved anywhere between 0.72 and 1.0. Only starts twisting if mouse moves left below 0.72 - holdRadius
+    float excessHero = max(0.0, (0.72 - uMousePos.x) - holdRadius);
     float tHero = clamp(excessHero / easeRange, 0.0, 1.0);
-    float effectiveDeltaHero = sign(diffHero) * excessHero * (tHero * tHero);
+    float effectiveDeltaHero = -excessHero * (tHero * tHero);
     float rotHero = effectiveDeltaHero * speed * 3.8 + heroImperfect[ringIndex];
 
     // 1. Digital UI sample UV (Text + Crosshairs, solves at Mouse X = 0.28)
