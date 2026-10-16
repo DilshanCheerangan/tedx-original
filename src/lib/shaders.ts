@@ -305,6 +305,36 @@ void main() {
     vec2 rotatedAspectWorld = aspectCenter + vec2(cos(worldAngle), sin(worldAngle)) * dist;
     worldSampleUV = vec2(rotatedAspectWorld.x / ar, rotatedAspectWorld.y);
     worldSampleUV = clamp(worldSampleUV, vec2(0.001), vec2(0.999));
+  } else {
+    // ── Outside the 12 rings (outer perimeter) ──
+    // Angle from center
+    float angle = atan(aspectUv.y - aspectCenter.y, aspectUv.x - aspectCenter.x);
+
+    // On the right side (Mouse X around 0.72), the hero is resolved with a very, very slow readable drift
+    float diffHero = uMousePos.x - 0.72;
+    float distHero = abs(diffHero);
+    float excessHero = max(0.0, distHero - 0.025);
+    float tHero = clamp(excessHero / 0.045, 0.0, 1.0);
+    float insideDriftHero = clamp(distHero / 0.025, 0.0, 1.0) * 0.008;
+    float outerRotHero = sign(diffHero) * (excessHero * (tHero * tHero) + insideDriftHero) * 0.8;
+
+    float worldAngle = angle + outerRotHero;
+    vec2 rotatedAspectWorld = aspectCenter + vec2(cos(worldAngle), sin(worldAngle)) * dist;
+    worldSampleUV = vec2(rotatedAspectWorld.x / ar, rotatedAspectWorld.y);
+    worldSampleUV = clamp(worldSampleUV, vec2(0.001), vec2(0.999));
+
+    // On the left side (Mouse X around 0.28), the title is resolved with a very, very slow readable drift
+    float diffText = uMousePos.x - 0.28;
+    float distText = abs(diffText);
+    float excessText = max(0.0, distText - 0.025);
+    float tText = clamp(excessText / 0.045, 0.0, 1.0);
+    float insideDriftText = clamp(distText / 0.025, 0.0, 1.0) * 0.008;
+    float outerRotText = sign(diffText) * (excessText * (tText * tText) + insideDriftText) * 0.8;
+
+    float textAngle = angle + outerRotText;
+    vec2 rotatedAspectText = aspectCenter + vec2(cos(textAngle), sin(textAngle)) * dist;
+    textSampleUV = vec2(rotatedAspectText.x / ar, rotatedAspectText.y);
+    textSampleUV = clamp(textSampleUV, vec2(0.001), vec2(0.999));
   }
 
   // 1. Base image (Hero statue and Background) sampled at worldSampleUV
