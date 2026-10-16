@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import { VS, FS_IMAGE, FS_FBM, FS_DITHER } from "@/lib/shaders";
 
 // =====================================================================
@@ -15,7 +15,13 @@ interface FBO {
   h: number;
 }
 
-export default function HeroShader({ layerMode = 'both' }: { layerMode?: 'bg' | 'hero' | 'both' }) {
+export default function HeroShader({
+  layerMode = 'both',
+  introOverride,
+}: {
+  layerMode?: 'bg' | 'hero' | 'both';
+  introOverride?: React.RefObject<number | null>;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
 
@@ -398,7 +404,10 @@ export default function HeroShader({ layerMode = 'both' }: { layerMode?: 'bg' | 
 
       gl!.uniform1f(U(pDither, "uTime"), ditherAccTime);
       gl!.uniform2f(U(pDither, "uResolution"), W, H);
-      gl!.uniform2f(U(pDither, "uMousePos"), depthMX, depthMY);
+      // Use virtual mouse X from intro animation if override is active
+      const virtualMX = introOverride?.current ?? null;
+      const effectiveMX = virtualMX !== null ? virtualMX : depthMX;
+      gl!.uniform2f(U(pDither, "uMousePos"), effectiveMX, depthMY);
       quad();
     }
 
