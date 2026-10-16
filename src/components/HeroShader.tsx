@@ -406,6 +406,9 @@ export default function HeroShader({
       gl!.uniform2f(U(pDither, "uResolution"), W, H);
       // Use virtual mouse X from intro animation if override is active
       const virtualMX = introOverride?.current ?? null;
+      if (virtualMX !== null) {
+        depthMX = virtualMX;
+      }
       const effectiveMX = virtualMX !== null ? virtualMX : depthMX;
       gl!.uniform2f(U(pDither, "uMousePos"), effectiveMX, depthMY);
       quad();
