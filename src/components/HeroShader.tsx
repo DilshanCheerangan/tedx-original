@@ -138,13 +138,14 @@ export default function HeroShader({
     let W: number, H: number;
     let fboA: FBO, fboB: FBO;
 
-    // Mouse: separate smooth values for depth (momentum 0.92) vs FBM (momentum 1.0)
-    let rawMX = 0.5,
+    // Mouse: start rawMX at 0.28 (matching intro resolution target)
+    let rawMX = 0.28,
       rawMY = 0.5;
-    let depthMX = 0.5,
-      depthMY = 0.5; // momentum 0.92
-    let fbmMX = 0.5,
-      fbmMY = 0.5; // momentum 1.0
+    let depthMX = 0.72,
+      depthMY = 0.5;
+    let fbmMX = 0.28,
+      fbmMY = 0.5;
+    let userHasInteracted = false;
 
     let t0 = 0; // animation start time
     let lastNow = 0; // previous frame timestamp
@@ -157,10 +158,12 @@ export default function HeroShader({
 
     /* ─── mouse ──────────────────────────────────────────────── */
     const handleMouseMove = (e: MouseEvent) => {
+      userHasInteracted = true;
       rawMX = e.clientX / window.innerWidth;
       rawMY = 1.0 - e.clientY / window.innerHeight; // flip Y for GL
     };
     const handleTouchMove = (e: TouchEvent) => {
+      userHasInteracted = true;
       const t = e.touches[0];
       rawMX = t.clientX / window.innerWidth;
       rawMY = 1.0 - t.clientY / window.innerHeight;
@@ -289,11 +292,18 @@ export default function HeroShader({
       lastNow = now;
       const sec = (now - t0) / 1000;
 
-      // ── Mouse momentum smoothing (snappy dial response) ──
-      depthMX += (rawMX - depthMX) * 0.2;
-      depthMY += (rawMY - depthMY) * 0.2;
-      fbmMX += (rawMX - fbmMX) * 0.05;
-      fbmMY += (rawMY - fbmMY) * 0.05;
+      // ── Mouse momentum smoothing (silky fluid inertia) ──
+      const virtualMX = introOverride?.current ?? null;
+      if (virtualMX !== null) {
+        // While intro is running, lock depthMX to intro animation
+        depthMX = virtualMX;
+      } else if (userHasInteracted) {
+        // After intro, gently follow the user's mouse with silky momentum
+        depthMX += (rawMX - depthMX) * 0.045;
+      }
+      depthMY += (rawMY - depthMY) * 0.055;
+      fbmMX += (rawMX - fbmMX) * 0.03;
+      fbmMY += (rawMY - fbmMY) * 0.03;
 
       // ── Appear animations ──
       const opP = Math.min(Math.max(sec - 0.1, 0) / 0.5, 1);
@@ -404,13 +414,7 @@ export default function HeroShader({
 
       gl!.uniform1f(U(pDither, "uTime"), ditherAccTime);
       gl!.uniform2f(U(pDither, "uResolution"), W, H);
-      // Use virtual mouse X from intro animation if override is active
-      const virtualMX = introOverride?.current ?? null;
-      if (virtualMX !== null) {
-        depthMX = virtualMX;
-      }
-      const effectiveMX = virtualMX !== null ? virtualMX : depthMX;
-      gl!.uniform2f(U(pDither, "uMousePos"), effectiveMX, depthMY);
+      gl!.uniform2f(U(pDither, "uMousePos"), depthMX, depthMY);
       quad();
     }
 

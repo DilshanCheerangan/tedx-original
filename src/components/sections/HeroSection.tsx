@@ -13,14 +13,14 @@ import { useRef, useCallback, useEffect, useState } from "react";
 
 // ─── Intro animation timing (ms) ──────────────────────────────────
 //  0ms        : phase 'aligned'  — rings aligned (hero side), UI hidden
-//  700ms      : phase 'scatter'  — rings scatter over 1100ms  (0.72 → 0.0)
-//  1800ms     : phase 'resolve'  — rings resolve over 1600ms  (0.0 → 0.28)
-//  3400ms     : phase 'done'     — hand back to mouse, UI fades in
-const T_SCATTER_START = 700;
-const T_SCATTER_DUR   = 1100;
-const T_RESOLVE_START = 1800;
-const T_RESOLVE_DUR   = 1600;
-const T_DONE          = 3400;
+//  1200ms     : phase 'scatter'  — rings scatter over 1800ms (0.72 → 0.02)
+//  3000ms     : phase 'resolve'  — rings resolve slowly over 2500ms (0.02 → 0.28)
+//  5500ms     : phase 'done'     — hand back to mouse smoothly, UI fades in
+const T_SCATTER_START = 1200;
+const T_SCATTER_DUR   = 1800;
+const T_RESOLVE_START = 3000;
+const T_RESOLVE_DUR   = 2500;
+const T_DONE          = 5500;
 
 // Position constants matching the shader's alignment points
 const POS_ALIGNED = 0.72; // hero / bg aligned
