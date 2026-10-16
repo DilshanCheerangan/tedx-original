@@ -12,15 +12,15 @@ import {
 import { useRef, useCallback, useEffect, useState } from "react";
 
 // ─── Intro animation timing (ms) ──────────────────────────────────
-//  0ms        : phase 'aligned'  — holds hero/bg and rings perfectly still & aligned (UI hidden)
-//  900ms      : phase 'scatter'  — rings and hero spin together smoothly into the solved Title
-//  3700ms     : phase 'done'     — UI fades in, seamless handoff to user mouse
-const T_HOLD_START  = 900;
-const T_SWEEP_DUR   = 2800;
-const T_TOTAL       = T_HOLD_START + T_SWEEP_DUR; // 3700ms
+//  0ms        : phase 'aligned'  — holds hero/bg aligned (UI hidden)
+//  600ms      : phase 'scatter'  — fluid cinematic sweep through scramble zone into solved Title
+//  3200ms     : phase 'done'     — UI fades in, handoff to user mouse
+const T_HOLD_START  = 600;
+const T_SWEEP_DUR   = 2600;
+const T_TOTAL       = T_HOLD_START + T_SWEEP_DUR; // 3200ms
 
 // Position constants matching the shader's alignment points
-const POS_ALIGNED = 0.85; // hero / bg aligned zone
+const POS_ALIGNED = 0.72; // hero / bg aligned sweet spot
 const POS_TITLE   = 0.22; // ANOMALY title aligned zone
 
 type IntroPhase = "aligned" | "scatter" | "resolve" | "done";

@@ -271,25 +271,23 @@ void main() {
 
     // ── MAGNETIC SNAP SETTINGS (Controls how long alignment holds) ──
     // holdRadius: distance inward toward the center where alignment stays locked
-    float holdRadius = 0.035;
+    float holdRadius = 0.025;
     // easeRange: soft transition zone into the scrambled middle section
     float easeRange = 0.080;
 
     // ── ALIGNMENT POINT 1: TEXT ALIGNED from 0.0 all the way to 0.28 (Left Edge Zone) ──
-    // Fully resolved anywhere between 0.0 and 0.28. Smoothly rotates as it enters the middle section
+    // Text is 100% aligned from 0.0 to 0.28, and rotates when mouse moves toward 1.0
     float rawDeltaText = max(0.0, uMousePos.x - 0.28);
     float tText = smoothstep(holdRadius, holdRadius + easeRange, rawDeltaText);
     float effectiveDeltaText = rawDeltaText * tText;
-    // Imperfect offsets only appear in the puzzle transition, 0.0 when fully aligned
-    float rotText = effectiveDeltaText * speed * 1.7 + textImperfect[ringIndex] * tText;
+    float rotText = effectiveDeltaText * speed * 1.7 + textImperfect[ringIndex] * (1.0 - tText);
 
     // ── ALIGNMENT POINT 2: HERO STATUE ALIGNED from 0.72 all the way to 1.0 (Right Edge Zone) ──
-    // Fully resolved anywhere between 0.72 and 1.0. Smoothly rotates as it enters the middle section
+    // Hero is 100% aligned from 0.72 to 1.0, and rotates when mouse moves toward 0.0
     float rawDeltaHero = max(0.0, 0.72 - uMousePos.x);
     float tHero = smoothstep(holdRadius, holdRadius + easeRange, rawDeltaHero);
     float effectiveDeltaHero = -rawDeltaHero * tHero;
-    // Imperfect offsets only appear in the puzzle transition, 0.0 when fully aligned
-    float rotHero = effectiveDeltaHero * speed * 1.7 + heroImperfect[ringIndex] * tHero;
+    float rotHero = effectiveDeltaHero * speed * 1.7 + heroImperfect[ringIndex] * (1.0 - tHero);
 
     // 1. Digital UI sample UV (Text + Crosshairs, solves at Mouse X = 0.28)
     float textAngle = angle + rotText;
