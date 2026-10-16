@@ -12,28 +12,22 @@ import {
 import { useRef, useCallback, useEffect, useState } from "react";
 
 // ─── Intro animation timing (ms) ──────────────────────────────────
-//  0ms        : phase 'aligned'  — rings aligned (hero side), UI hidden
-//  700ms      : phase 'scatter'  — rings scatter over 1100ms  (0.72 → 0.0)
-//  1800ms     : phase 'resolve'  — rings resolve over 1600ms  (0.0 → 0.28)
-//  3400ms     : phase 'done'     — hand back to mouse, UI fades in
-const T_SCATTER_START = 700;
-const T_SCATTER_DUR   = 1100;
-const T_RESOLVE_START = 1800;
-const T_RESOLVE_DUR   = 1600;
-const T_DONE          = 3400;
+//  0ms        : phase 'aligned'  — holds hero/bg aligned (UI hidden)
+//  600ms      : phase 'scatter'  — fluid cinematic sweep through scramble zone into solved Title
+//  3200ms     : phase 'done'     — UI fades in, handoff to user mouse
+const T_HOLD_START  = 600;
+const T_SWEEP_DUR   = 2600;
+const T_TOTAL       = T_HOLD_START + T_SWEEP_DUR; // 3200ms
 
 // Position constants matching the shader's alignment points
-const POS_ALIGNED = 0.85; // hero / bg aligned zone
-const POS_SCATTER = 0.50; // fully scrambled / dis-aligned middle zone
-const POS_TITLE   = 0.20; // ANOMALY title aligned zone
+const POS_ALIGNED = 0.82; // hero / bg aligned zone
+const POS_TITLE   = 0.22; // ANOMALY title aligned zone
 
 type IntroPhase = "aligned" | "scatter" | "resolve" | "done";
 
-function easeInOutCubic(t: number) {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
-function easeOutQuart(t: number) {
-  return 1 - Math.pow(1 - t, 4);
+// Smooth sine easing (continuous acceleration and deceleration with zero velocity jerks)
+function easeInOutSine(x: number): number {
+  return -(Math.cos(Math.PI * x) - 1) / 2;
 }
 
 export default function HeroSection() {
@@ -48,36 +42,28 @@ export default function HeroSection() {
 
   useEffect(() => {
     const startTime = performance.now();
-    let phase: IntroPhase = "aligned";
 
     function tick(now: number) {
       const elapsed = now - startTime;
 
-      if (elapsed < T_SCATTER_START) {
-        // Hold perfectly aligned
+      if (elapsed < T_HOLD_START) {
         introMouseRef.current = POS_ALIGNED;
-        phase = "aligned";
-      } else if (elapsed < T_RESOLVE_START) {
-        // Scatter: ease from POS_ALIGNED → POS_SCATTER
-        const t = Math.min((elapsed - T_SCATTER_START) / T_SCATTER_DUR, 1);
-        introMouseRef.current = POS_ALIGNED + (POS_SCATTER - POS_ALIGNED) * easeInOutCubic(t);
-        if (phase !== "scatter") {
-          phase = "scatter";
+      } else if (elapsed < T_TOTAL) {
+        const rawProgress = (elapsed - T_HOLD_START) / T_SWEEP_DUR;
+        const easedProgress = easeInOutSine(rawProgress);
+        
+        introMouseRef.current = POS_ALIGNED + (POS_TITLE - POS_ALIGNED) * easedProgress;
+
+        if (rawProgress > 0.65) {
+          setIntroPhase("resolve");
+        } else {
           setIntroPhase("scatter");
         }
-      } else if (elapsed < T_DONE) {
-        // Resolve: ease from POS_SCATTER → POS_TITLE
-        const t = Math.min((elapsed - T_RESOLVE_START) / T_RESOLVE_DUR, 1);
-        introMouseRef.current = POS_SCATTER + (POS_TITLE - POS_SCATTER) * easeOutQuart(t);
-        if (phase !== "resolve") {
-          phase = "resolve";
-          setIntroPhase("resolve");
-        }
       } else {
-        // Done — hand control back to real mouse
+        // Intro complete! Lock virtual mouse to POS_TITLE so handoff is seamless
         introMouseRef.current = null;
         setIntroPhase("done");
-        return; // stop RAF
+        return; // stop RAF loop
       }
 
       introRAFRef.current = requestAnimationFrame(tick);

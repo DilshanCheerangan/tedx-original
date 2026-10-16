@@ -273,20 +273,20 @@ void main() {
     // holdRadius: distance inward toward the center where alignment stays locked
     float holdRadius = 0.035;
     // easeRange: soft transition zone into the scrambled middle section
-    float easeRange = 0.055;
+    float easeRange = 0.080;
 
     // ── ALIGNMENT POINT 1: TEXT ALIGNED from 0.0 all the way to 0.28 (Left Edge Zone) ──
-    // Fully resolved anywhere between 0.0 and 0.28. Only starts twisting if mouse moves right beyond 0.28 + holdRadius
-    float excessText = max(0.0, (uMousePos.x - 0.28) - holdRadius);
-    float tText = clamp(excessText / easeRange, 0.0, 1.0);
-    float effectiveDeltaText = excessText * (tText * tText);
+    // Fully resolved anywhere between 0.0 and 0.28. Smoothly rotates as it enters the middle section
+    float rawDeltaText = max(0.0, uMousePos.x - 0.28);
+    float tText = smoothstep(holdRadius, holdRadius + easeRange, rawDeltaText);
+    float effectiveDeltaText = rawDeltaText * tText;
     float rotText = effectiveDeltaText * speed * 1.7 + textImperfect[ringIndex];
 
     // ── ALIGNMENT POINT 2: HERO STATUE ALIGNED from 0.72 all the way to 1.0 (Right Edge Zone) ──
-    // Fully resolved anywhere between 0.72 and 1.0. Only starts twisting if mouse moves left below 0.72 - holdRadius
-    float excessHero = max(0.0, (0.72 - uMousePos.x) - holdRadius);
-    float tHero = clamp(excessHero / easeRange, 0.0, 1.0);
-    float effectiveDeltaHero = -excessHero * (tHero * tHero);
+    // Fully resolved anywhere between 0.72 and 1.0. Smoothly rotates as it enters the middle section
+    float rawDeltaHero = max(0.0, 0.72 - uMousePos.x);
+    float tHero = smoothstep(holdRadius, holdRadius + easeRange, rawDeltaHero);
+    float effectiveDeltaHero = -rawDeltaHero * tHero;
     float rotHero = effectiveDeltaHero * speed * 1.7 + heroImperfect[ringIndex];
 
     // 1. Digital UI sample UV (Text + Crosshairs, solves at Mouse X = 0.28)
