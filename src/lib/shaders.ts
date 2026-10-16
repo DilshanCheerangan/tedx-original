@@ -280,14 +280,16 @@ void main() {
     float rawDeltaText = max(0.0, uMousePos.x - 0.28);
     float tText = smoothstep(holdRadius, holdRadius + easeRange, rawDeltaText);
     float effectiveDeltaText = rawDeltaText * tText;
-    float rotText = effectiveDeltaText * speed * 1.7 + textImperfect[ringIndex];
+    // Imperfect offsets only appear in the puzzle transition, 0.0 when fully aligned
+    float rotText = effectiveDeltaText * speed * 1.7 + textImperfect[ringIndex] * tText;
 
     // ── ALIGNMENT POINT 2: HERO STATUE ALIGNED from 0.72 all the way to 1.0 (Right Edge Zone) ──
     // Fully resolved anywhere between 0.72 and 1.0. Smoothly rotates as it enters the middle section
     float rawDeltaHero = max(0.0, 0.72 - uMousePos.x);
     float tHero = smoothstep(holdRadius, holdRadius + easeRange, rawDeltaHero);
     float effectiveDeltaHero = -rawDeltaHero * tHero;
-    float rotHero = effectiveDeltaHero * speed * 1.7 + heroImperfect[ringIndex];
+    // Imperfect offsets only appear in the puzzle transition, 0.0 when fully aligned
+    float rotHero = effectiveDeltaHero * speed * 1.7 + heroImperfect[ringIndex] * tHero;
 
     // 1. Digital UI sample UV (Text + Crosshairs, solves at Mouse X = 0.28)
     float textAngle = angle + rotText;
