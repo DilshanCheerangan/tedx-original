@@ -269,27 +269,29 @@ void main() {
       0.029    // Ring 11
     );
 
-    // ── MAGNETIC SNAP SETTINGS (Controls how long alignment holds) ──
-    // holdRadius: ±distance (fraction of screen width) where puzzle stays 100% locked
-    // 0.025 gives a balanced ~5% screen-width sweet spot (responsive yet stable)
+    // ── MAGNETIC SNAP & DRIFT SETTINGS ──
+    // holdRadius: zone where puzzle reaches near-alignment
     float holdRadius = 0.025;
-    // easeRange: soft transition distance beyond hold zone so gears turn smoothly
     float easeRange = 0.045;
 
-    // ── ALIGNMENT POINT 1: TEXT ALIGNS (~90%) at Mouse X = 0.28 (Left side) ──
+    // ── ALIGNMENT POINT 1: TEXT ALIGNS at Mouse X = 0.28 (Left side) ──
     float diffText = uMousePos.x - 0.28;
     float distText = abs(diffText);
     float excessText = max(0.0, distText - holdRadius);
     float tText = clamp(excessText / easeRange, 0.0, 1.0);
-    float effectiveDeltaText = sign(diffText) * excessText * (tText * tText);
+    // Inside the solved zone, text still rotates very, very slowly (subtle readable drift)
+    float insideDriftText = clamp(distText / holdRadius, 0.0, 1.0) * 0.008;
+    float effectiveDeltaText = sign(diffText) * (excessText * (tText * tText) + insideDriftText);
     float rotText = effectiveDeltaText * speed * 3.8 + textImperfect[ringIndex];
 
-    // ── ALIGNMENT POINT 2: HERO STATUE ALIGNS (~90%) at Mouse X = 0.72 (Right side) ──
+    // ── ALIGNMENT POINT 2: HERO STATUE ALIGNS at Mouse X = 0.72 (Right side) ──
     float diffHero = uMousePos.x - 0.72;
     float distHero = abs(diffHero);
     float excessHero = max(0.0, distHero - holdRadius);
     float tHero = clamp(excessHero / easeRange, 0.0, 1.0);
-    float effectiveDeltaHero = sign(diffHero) * excessHero * (tHero * tHero);
+    // Inside the solved zone, hero still rotates very, very slowly (subtle organic drift)
+    float insideDriftHero = clamp(distHero / holdRadius, 0.0, 1.0) * 0.008;
+    float effectiveDeltaHero = sign(diffHero) * (excessHero * (tHero * tHero) + insideDriftHero);
     float rotHero = effectiveDeltaHero * speed * 3.8 + heroImperfect[ringIndex];
 
     // 1. Digital UI sample UV (Text + Crosshairs, solves at Mouse X = 0.28)
