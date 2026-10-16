@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useCallback } from "react";
 import { VS, FS_IMAGE, FS_FBM, FS_DITHER } from "@/lib/shaders";
+import { soundFX } from "@/lib/soundFX";
 
 // =====================================================================
 //  R—K Hero Shader — React Component
@@ -315,16 +316,42 @@ export default function HeroShader({
 
       // ── Mouse momentum smoothing (silky, weighted mechanical dial response) ──
       const virtualMX = introOverride?.current ?? null;
+      const prevDepthMX = depthMX;
+
       if (virtualMX !== null) {
         // While intro is running, anchor internal mouse tracking to the virtual position
         depthMX = virtualMX;
         rawMX = virtualMX;
+
+        // Intro sounds: ratchet clicks and lock chimes
+        const delta = Math.abs(depthMX - prevDepthMX);
+        if (delta > 0.001) {
+          soundFX.playRatchetClick(1.1);
+        }
+        if (depthMX <= 0.28 && prevDepthMX > 0.28) {
+          soundFX.playSnapLock("title");
+        }
       } else if (!userEngaged) {
         // Intro just finished! Keep depthMX anchored at the solved Title position (e.g. 0.20)
         // until the user deliberately moves their cursor (>4% screen threshold)
       } else {
         // User intentionally engaged: smoothly interpolate toward their actual mouse position
         depthMX += (rawMX - depthMX) * 0.12;
+
+        // Interactive sounds
+        const delta = Math.abs(depthMX - prevDepthMX);
+        if (delta > 0.0012) {
+          soundFX.playRatchetClick(0.95);
+        }
+
+        // Magnetic snap lock sounds
+        if (depthMX <= 0.28) {
+          soundFX.playSnapLock("title");
+        } else if (depthMX >= 0.72) {
+          soundFX.playSnapLock("hero");
+        } else {
+          soundFX.resetSnapState();
+        }
       }
 
       depthMY += (rawMY - depthMY) * 0.12;

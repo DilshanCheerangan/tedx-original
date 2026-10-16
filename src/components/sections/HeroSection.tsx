@@ -10,6 +10,7 @@ import {
   useSpring,
 } from "framer-motion";
 import { useRef, useCallback, useEffect, useState } from "react";
+import { soundFX } from "@/lib/soundFX";
 
 // ─── Intro animation timing (ms) ──────────────────────────────────
 //  0ms        : phase 'aligned'  — holds hero/bg aligned (UI hidden)
@@ -32,6 +33,9 @@ function easeInOutSine(x: number): number {
 
 export default function HeroSection() {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // ── Sound state ───────────────────────────────────────────────────
+  const [isMuted, setIsMuted] = useState(false);
 
   // ── Intro state ───────────────────────────────────────────────────
   const [introPhase, setIntroPhase] = useState<IntroPhase>("aligned");
@@ -215,10 +219,26 @@ export default function HeroSection() {
             <a href="#contact" className="hover:text-white transition">CONTACT</a>
           </div>
 
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-6">
             <span className="text-xs font-semibold tracking-[0.25em] text-red-600 hidden md:block">
               ANOMALY / 2026
             </span>
+
+            {/* Sound FX Toggle Button */}
+            <button
+              onClick={() => {
+                const next = !isMuted;
+                setIsMuted(next);
+                soundFX.setMuted(next);
+              }}
+              className="px-3 py-1.5 rounded-full border border-white/20 hover:border-red-500/60 bg-black/40 backdrop-blur-sm text-[11px] font-mono tracking-widest text-white/80 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer"
+              aria-label="Toggle Sound FX"
+              title="Toggle Mechanical Sound Effects"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${isMuted ? "bg-white/30" : "bg-red-500 animate-pulse"}`} />
+              <span>{isMuted ? "SFX OFF" : "SFX ON"}</span>
+            </button>
+
             <button className="flex flex-col gap-1.5 group" aria-label="Toggle menu">
               <span className="w-8 h-[2px] bg-white group-hover:bg-red-500 transition" />
               <span className="w-8 h-[2px] bg-white group-hover:bg-red-500 transition" />
@@ -226,15 +246,27 @@ export default function HeroSection() {
           </div>
         </motion.nav>
 
-        {/* Scroll indicator */}
+        {/* ── Interactive HUD Dial (Teaches user to move left/right to decrypt) ── */}
         <motion.div
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2 pointer-events-none"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: uiVisible ? 1 : 0 }}
-          transition={{ duration: 1.0, ease: "easeOut", delay: 0.2 }}
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2 pointer-events-none select-none"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: uiVisible ? 1 : 0, y: uiVisible ? 0 : 12 }}
+          transition={{ duration: 1.0, ease: "easeOut", delay: 0.35 }}
         >
-          <span className="text-white/40 text-[10px] tracking-[0.3em] uppercase">Scroll</span>
-          <div className="w-[1px] h-8 bg-gradient-to-b from-white/40 to-transparent" />
+          <div className="flex items-center gap-3 px-4 py-1.5 rounded-full bg-black/60 border border-white/10 backdrop-blur-md shadow-2xl">
+            <span className="text-[10px] tracking-[0.25em] uppercase font-mono text-red-400 font-semibold">
+              ◀ TITLE
+            </span>
+            <div className="w-12 h-[2px] bg-white/20 rounded-full relative overflow-hidden">
+              <div className="w-2 h-[2px] bg-red-500 rounded-full animate-[pulse_1.5s_ease-in-out_infinite]" />
+            </div>
+            <span className="text-[10px] tracking-[0.25em] uppercase font-mono text-white/60 font-semibold">
+              STATUE ▶
+            </span>
+          </div>
+          <span className="text-[9px] tracking-[0.28em] uppercase text-white/40 font-mono">
+            MOVE CURSOR TO RESOLVE
+          </span>
         </motion.div>
       </div>
     </div>
