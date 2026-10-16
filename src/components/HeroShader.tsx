@@ -411,6 +411,7 @@ export default function HeroShader({
       gl!.bindTexture(gl!.TEXTURE_2D, texOutline || fboA.tex);
       gl!.uniform1i(U(pDither, "uTextTex"), 1);
       gl!.uniform1f(U(pDither, "uHasText"), (layerMode === 'hero' && texOutline) ? 1.0 : 0.0);
+      gl!.uniform1f(U(pDither, "uIsHero"), layerMode === 'hero' ? 1.0 : 0.0);
 
       gl!.uniform1f(U(pDither, "uTime"), ditherAccTime);
       gl!.uniform2f(U(pDither, "uResolution"), W, H);
