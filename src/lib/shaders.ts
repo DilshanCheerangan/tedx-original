@@ -193,7 +193,6 @@ out vec4 fragColor;
 uniform sampler2D uTexture;     // Base layer (hero statue or bg) - SOLVED
 uniform sampler2D uTextTex;     // Text layer (ANOMALY) - UNSOLVED
 uniform float uHasText;         // 1.0 if hero layer has text texture ready
-uniform float uIsHero;          // 1.0 for hero layer (puzzle active), 0.0 for bg (always still)
 uniform float uTime;
 uniform vec2 uResolution;
 uniform vec2 uMousePos;
@@ -214,129 +213,99 @@ void main() {
   vec2 worldSampleUV = uv;
   vec2 textSampleUV = uv;
 
-  // Only the hero layer undergoes concentric puzzle ring rotations.
-  // The background layer (uIsHero <= 0.5) stays completely still and unrotated.
-  if (uIsHero > 0.5) {
-    // Inside the 12 concentric rings
-    if (dist < maxRadius) {
-      int ringIndex = int(clamp(floor(dist / ringStep), 0.0, 11.0));
+  // Inside the 12 concentric rings
+  if (dist < maxRadius) {
+    int ringIndex = int(clamp(floor(dist / ringStep), 0.0, 11.0));
 
-      // Angle from center
-      float angle = atan(aspectUv.y - aspectCenter.y, aspectUv.x - aspectCenter.x);
+    // Angle from center
+    float angle = atan(aspectUv.y - aspectCenter.y, aspectUv.x - aspectCenter.x);
 
-      // Widely contrasting gear speeds across the 12 concentric rings
-      float ringSpeeds[12] = float[12](
-        0.8,   // Ring 0: slow, heavy central dial
-        -8.2,  // Ring 1: fast spin counter-clockwise
-        2.5,   // Ring 2: medium clockwise
-        -11.8, // Ring 3: high-speed whip counter-clockwise
-        1.3,   // Ring 4: sluggish glide clockwise
-        -14.6, // Ring 5: ultra-fast turbine spin counter-clockwise
-        3.7,   // Ring 6: moderate speed clockwise
-        -10.2, // Ring 7: fast counter-clockwise
-        0.9,   // Ring 8: heavy slow crawl clockwise
-        -6.8,  // Ring 9: moderate counter-clockwise
-        3.2,   // Ring 10: medium-fast clockwise
-        -9.5   // Ring 11: outer ring counter-clockwise
-      );
+    // Widely contrasting gear speeds across the 12 concentric rings
+    float ringSpeeds[12] = float[12](
+      0.8,   // Ring 0: slow, heavy central dial
+      -8.2,  // Ring 1: fast spin counter-clockwise
+      2.5,   // Ring 2: medium clockwise
+      -11.8, // Ring 3: high-speed whip counter-clockwise
+      1.3,   // Ring 4: sluggish glide clockwise
+      -14.6, // Ring 5: ultra-fast turbine spin counter-clockwise
+      3.7,   // Ring 6: moderate speed clockwise
+      -10.2, // Ring 7: fast counter-clockwise
+      0.9,   // Ring 8: heavy slow crawl clockwise
+      -6.8,  // Ring 9: moderate counter-clockwise
+      3.2,   // Ring 10: medium-fast clockwise
+      -9.5   // Ring 11: outer ring counter-clockwise
+    );
 
-      float speed = ringSpeeds[ringIndex];
+    float speed = ringSpeeds[ringIndex];
 
-      // Artistic imperfect micro-offsets (wabi-sabi 90% alignment)
-      float textImperfect[12] = float[12](
-        0.014,   // Ring 0
-        -0.034,  // Ring 1
-        0.040,   // Ring 2
-        -0.025,  // Ring 3
-        0.046,   // Ring 4
-        -0.036,  // Ring 5
-        0.030,   // Ring 6
-        -0.043,  // Ring 7
-        0.023,   // Ring 8
-        -0.035,  // Ring 9
-        0.038,   // Ring 10
-        -0.028   // Ring 11
-      );
+    // Artistic imperfect micro-offsets (wabi-sabi 90% alignment)
+    float textImperfect[12] = float[12](
+      0.014,   // Ring 0
+      -0.034,  // Ring 1
+      0.040,   // Ring 2
+      -0.025,  // Ring 3
+      0.046,   // Ring 4
+      -0.036,  // Ring 5
+      0.030,   // Ring 6
+      -0.043,  // Ring 7
+      0.023,   // Ring 8
+      -0.035,  // Ring 9
+      0.038,   // Ring 10
+      -0.028   // Ring 11
+    );
 
-      float heroImperfect[12] = float[12](
-        -0.021,  // Ring 0
-        0.033,   // Ring 1
-        -0.039,  // Ring 2
-        0.026,   // Ring 3
-        -0.043,  // Ring 4
-        0.034,   // Ring 5
-        -0.028,  // Ring 6
-        0.040,   // Ring 7
-        -0.025,  // Ring 8
-        0.031,   // Ring 9
-        -0.042,  // Ring 10
-        0.029    // Ring 11
-      );
+    float heroImperfect[12] = float[12](
+      -0.021,  // Ring 0
+      0.033,   // Ring 1
+      -0.039,  // Ring 2
+      0.026,   // Ring 3
+      -0.043,  // Ring 4
+      0.034,   // Ring 5
+      -0.028,  // Ring 6
+      0.040,   // Ring 7
+      -0.025,  // Ring 8
+      0.031,   // Ring 9
+      -0.042,  // Ring 10
+      0.029    // Ring 11
+    );
 
-      // ── MAGNETIC SNAP & DRIFT SETTINGS ──
-      float holdRadius = 0.025;
-      float easeRange = 0.045;
+    // ── MAGNETIC SNAP SETTINGS (Controls how long alignment holds) ──
+    // holdRadius: ±distance (fraction of screen width) where puzzle stays 100% locked
+    // 0.025 gives a balanced ~5% screen-width sweet spot (responsive yet stable)
+    float holdRadius = 0.025;
+    // easeRange: soft transition distance beyond hold zone so gears turn smoothly
+    float easeRange = 0.045;
 
-      // ── ALIGNMENT POINT 1: TEXT ALIGNS at Mouse X = 0.28 (Left side) ──
-      float diffText = uMousePos.x - 0.28;
-      float distText = abs(diffText);
-      float excessText = max(0.0, distText - holdRadius);
-      float tText = clamp(excessText / easeRange, 0.0, 1.0);
-      float insideDriftText = clamp(distText / holdRadius, 0.0, 1.0) * 0.008;
-      float effectiveDeltaText = sign(diffText) * (excessText * (tText * tText) + insideDriftText);
-      float rotText = effectiveDeltaText * speed * 3.8 + textImperfect[ringIndex];
+    // ── ALIGNMENT POINT 1: TEXT ALIGNS (~90%) at Mouse X = 0.28 (Left side) ──
+    float diffText = uMousePos.x - 0.28;
+    float distText = abs(diffText);
+    float excessText = max(0.0, distText - holdRadius);
+    float tText = clamp(excessText / easeRange, 0.0, 1.0);
+    float effectiveDeltaText = sign(diffText) * excessText * (tText * tText);
+    float rotText = effectiveDeltaText * speed * 3.8 + textImperfect[ringIndex];
 
-      // ── ALIGNMENT POINT 2: HERO STATUE ALIGNS at Mouse X = 0.72 (Right side) ──
-      float diffHero = uMousePos.x - 0.72;
-      float distHero = abs(diffHero);
-      float excessHero = max(0.0, distHero - holdRadius);
-      float tHero = clamp(excessHero / easeRange, 0.0, 1.0);
-      float insideDriftHero = clamp(distHero / holdRadius, 0.0, 1.0) * 0.008;
-      float effectiveDeltaHero = sign(diffHero) * (excessHero * (tHero * tHero) + insideDriftHero);
-      float rotHero = effectiveDeltaHero * speed * 3.8 + heroImperfect[ringIndex];
+    // ── ALIGNMENT POINT 2: HERO STATUE ALIGNS (~90%) at Mouse X = 0.72 (Right side) ──
+    float diffHero = uMousePos.x - 0.72;
+    float distHero = abs(diffHero);
+    float excessHero = max(0.0, distHero - holdRadius);
+    float tHero = clamp(excessHero / easeRange, 0.0, 1.0);
+    float effectiveDeltaHero = sign(diffHero) * excessHero * (tHero * tHero);
+    float rotHero = effectiveDeltaHero * speed * 3.8 + heroImperfect[ringIndex];
 
-      // 1. Digital UI sample UV (Text + Crosshairs, solves at Mouse X = 0.28)
-      float textAngle = angle + rotText;
-      vec2 rotatedAspectText = aspectCenter + vec2(cos(textAngle), sin(textAngle)) * dist;
-      textSampleUV = vec2(rotatedAspectText.x / ar, rotatedAspectText.y);
-      textSampleUV = clamp(textSampleUV, vec2(0.001), vec2(0.999));
+    // 1. Digital UI sample UV (Text + Crosshairs, solves at Mouse X = 0.28)
+    float textAngle = angle + rotText;
+    vec2 rotatedAspectText = aspectCenter + vec2(cos(textAngle), sin(textAngle)) * dist;
+    textSampleUV = vec2(rotatedAspectText.x / ar, rotatedAspectText.y);
+    textSampleUV = clamp(textSampleUV, vec2(0.001), vec2(0.999));
 
-      // 2. Physical World sample UV (Hero + Background, solves at Mouse X = 0.72)
-      float worldAngle = angle + rotHero;
-      vec2 rotatedAspectWorld = aspectCenter + vec2(cos(worldAngle), sin(worldAngle)) * dist;
-      worldSampleUV = vec2(rotatedAspectWorld.x / ar, rotatedAspectWorld.y);
-      worldSampleUV = clamp(worldSampleUV, vec2(0.001), vec2(0.999));
-    } else {
-      // ── Outside the 12 rings (outer perimeter) ──
-      float angle = atan(aspectUv.y - aspectCenter.y, aspectUv.x - aspectCenter.x);
-
-      float diffHero = uMousePos.x - 0.72;
-      float distHero = abs(diffHero);
-      float excessHero = max(0.0, distHero - 0.025);
-      float tHero = clamp(excessHero / 0.045, 0.0, 1.0);
-      float insideDriftHero = clamp(distHero / 0.025, 0.0, 1.0) * 0.008;
-      float outerRotHero = sign(diffHero) * (excessHero * (tHero * tHero) + insideDriftHero) * 0.8;
-
-      float worldAngle = angle + outerRotHero;
-      vec2 rotatedAspectWorld = aspectCenter + vec2(cos(worldAngle), sin(worldAngle)) * dist;
-      worldSampleUV = vec2(rotatedAspectWorld.x / ar, rotatedAspectWorld.y);
-      worldSampleUV = clamp(worldSampleUV, vec2(0.001), vec2(0.999));
-
-      float diffText = uMousePos.x - 0.28;
-      float distText = abs(diffText);
-      float excessText = max(0.0, distText - 0.025);
-      float tText = clamp(excessText / 0.045, 0.0, 1.0);
-      float insideDriftText = clamp(distText / 0.025, 0.0, 1.0) * 0.008;
-      float outerRotText = sign(diffText) * (excessText * (tText * tText) + insideDriftText) * 0.8;
-
-      float textAngle = angle + outerRotText;
-      vec2 rotatedAspectText = aspectCenter + vec2(cos(textAngle), sin(textAngle)) * dist;
-      textSampleUV = vec2(rotatedAspectText.x / ar, rotatedAspectText.y);
-      textSampleUV = clamp(textSampleUV, vec2(0.001), vec2(0.999));
-    }
+    // 2. Physical World sample UV (Hero + Background, solves at Mouse X = 0.72)
+    float worldAngle = angle + rotHero;
+    vec2 rotatedAspectWorld = aspectCenter + vec2(cos(worldAngle), sin(worldAngle)) * dist;
+    worldSampleUV = vec2(rotatedAspectWorld.x / ar, rotatedAspectWorld.y);
+    worldSampleUV = clamp(worldSampleUV, vec2(0.001), vec2(0.999));
   }
 
-  // 1. Base image (Hero statue or Background) sampled at worldSampleUV
+  // 1. Base image (Hero statue and Background) sampled at worldSampleUV
   vec4 color = texture(uTexture, worldSampleUV);
 
   // 2. Digital UI overlay (ANOMALY text + Crosshairs) sampled at textSampleUV
@@ -348,8 +317,8 @@ void main() {
     }
   }
 
-  // 3. Subtle ambient occlusion / drop shadow between the 12 rings on the puzzle layer
-  if (uIsHero > 0.5 && dist < maxRadius) {
+  // 3. Subtle ambient occlusion / drop shadow between the 12 rings (no white outline lines)
+  if (dist < maxRadius) {
     float ringFrac = fract(dist / ringStep);
     // Soft shadow gradient dipping near ring boundary seams
     float edgeShadow = smoothstep(0.0, 0.20, ringFrac) * smoothstep(1.0, 0.80, ringFrac);
