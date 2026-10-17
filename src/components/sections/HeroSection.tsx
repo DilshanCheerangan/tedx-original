@@ -10,12 +10,11 @@ import {
   useSpring,
 } from "framer-motion";
 import { useRef, useCallback, useEffect, useState } from "react";
-import { soundFX } from "@/lib/soundFX";
 
 // ─── Intro animation timing (ms) ──────────────────────────────────
 //  0ms        : phase 'aligned'  — holds hero/bg aligned (UI hidden)
 //  600ms      : phase 'scatter'  — fluid cinematic sweep through scramble zone into solved Title
-//  3200ms     : phase 'done'     — UI fades in, handoff to user mouse
+//  3200ms     : phase 'done'     — UI fades in, lever appears
 const T_HOLD_START  = 600;
 const T_SWEEP_DUR   = 2600;
 const T_TOTAL       = T_HOLD_START + T_SWEEP_DUR; // 3200ms
@@ -26,7 +25,6 @@ const POS_TITLE   = 0.22; // ANOMALY title aligned zone
 
 type IntroPhase = "aligned" | "scatter" | "resolve" | "done";
 
-// Smooth sine easing (continuous acceleration and deceleration with zero velocity jerks)
 function easeInOutSine(x: number): number {
   return -(Math.cos(Math.PI * x) - 1) / 2;
 }
@@ -34,15 +32,17 @@ function easeInOutSine(x: number): number {
 export default function HeroSection() {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // ── Sound state ───────────────────────────────────────────────────
-  const [isMuted, setIsMuted] = useState(false);
-
   // ── Intro state ───────────────────────────────────────────────────
   const [introPhase, setIntroPhase] = useState<IntroPhase>("aligned");
   // The virtual mouse X value — starts at "hero aligned" position
   const introMouseRef = useRef<number | null>(POS_ALIGNED);
-  // RAF handle for the smooth animation loop
   const introRAFRef = useRef<number>(0);
+
+  // ── Circular Arc Lever State ──────────────────────────────────────
+  // leverVal ranges from 0.0 (Left: Title) to 1.0 (Right: Statue)
+  const [leverVal, setLeverVal] = useState<number>(0.0);
+  const isDraggingLever = useRef<boolean>(false);
+  const arcCenterRef = useRef<{ cx: number; cy: number }>({ cx: 0, cy: 0 });
 
   useEffect(() => {
     const startTime = performance.now();
@@ -55,7 +55,6 @@ export default function HeroSection() {
       } else if (elapsed < T_TOTAL) {
         const rawProgress = (elapsed - T_HOLD_START) / T_SWEEP_DUR;
         const easedProgress = easeInOutSine(rawProgress);
-        
         introMouseRef.current = POS_ALIGNED + (POS_TITLE - POS_ALIGNED) * easedProgress;
 
         if (rawProgress > 0.65) {
@@ -77,6 +76,65 @@ export default function HeroSection() {
     return () => cancelAnimationFrame(introRAFRef.current);
   }, []);
 
+  // Update shader mouse position from lever value
+  // leverVal 0.0 -> POS_TITLE (0.22)
+  // leverVal 1.0 -> POS_ALIGNED (0.72)
+  const updateLeverPosition = useCallback((newVal: number) => {
+    const clamped = Math.max(0, Math.min(1, newVal));
+    setLeverVal(clamped);
+
+    // Only override shader after intro is finished
+    if (introPhase === "done") {
+      const shaderX = POS_TITLE + (POS_ALIGNED - POS_TITLE) * clamped;
+      // Dispatch a synthetic mousemove to notify HeroShader
+      const clientX = shaderX * window.innerWidth;
+      const clientY = window.innerHeight * 0.5;
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX, clientY }));
+    }
+  }, [introPhase]);
+
+  // ── Arc Lever Drag Calculations ───────────────────────────────────
+  // Arc spans an angle at the bottom of the circle: from 60deg to 120deg (or -30deg to +30deg around bottom 90deg)
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    isDraggingLever.current = true;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+    // Compute center of screen
+    arcCenterRef.current = {
+      cx: window.innerWidth / 2,
+      cy: window.innerHeight / 2,
+    };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDraggingLever.current) return;
+    const { cx, cy } = arcCenterRef.current;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+
+    // Angle in degrees around bottom center (down is 90 deg)
+    // Angle offset from straight down (dy > 0): atan2(dx, dy)
+    // At bottom center (dx=0, dy>0), angle = 0 rad
+    // Moving left (dx < 0): angle is negative
+    // Moving right (dx > 0): angle is positive
+    const angleRad = Math.atan2(dx, dy); // rad: -PI/2 (left) to +PI/2 (right)
+    const angleDeg = (angleRad * 180) / Math.PI;
+
+    // We map -32 degrees (left: Title) to +32 degrees (right: Statue)
+    const MAX_ARC_DEG = 32;
+    const norm = (angleDeg - (-MAX_ARC_DEG)) / (MAX_ARC_DEG * 2);
+    updateLeverPosition(norm);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!isDraggingLever.current) return;
+    isDraggingLever.current = false;
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
+  };
+
   // ── Scroll-linked dissolve ──────────────────────────────────────
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -88,7 +146,7 @@ export default function HeroSection() {
   const bgOpacity       = useTransform(scrollYProgress, [0.35, 0.78], [1, 0.05]);
   const vignetteOpacity = useTransform(scrollYProgress, [0.1, 0.8], [0, 1]);
 
-  // ── Mouse parallax ─────────────────────────────────────────────
+  // ── Mouse parallax (kept subtle for background depth) ───────────
   const rawX = useMotionValue(0);
   const rawY = useMotionValue(0);
 
@@ -99,12 +157,20 @@ export default function HeroSection() {
   const statueY = useSpring(useTransform(rawY, (v) => v * -0.022), { stiffness: 60, damping: 22 });
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    rawX.set(e.clientX - window.innerWidth / 2);
-    rawY.set(e.clientY - window.innerHeight / 2);
+    // Only apply subtle parallax if not dragging the lever
+    if (!isDraggingLever.current) {
+      rawX.set(e.clientX - window.innerWidth / 2);
+      rawY.set(e.clientY - window.innerHeight / 2);
+    }
   }, [rawX, rawY]);
 
   // UI elements are invisible until intro is "done"
   const uiVisible = introPhase === "done";
+
+  // Arc lever geometry
+  // Rings are 100vh diameter, radius is 50vh.
+  // The lever sits at radius = 52vh (just outside the 12th ring)
+  const currentAngleDeg = -32 + leverVal * 64; // from -32deg to +32deg
 
   return (
     <div ref={containerRef} className="relative h-[200vh]">
@@ -152,6 +218,93 @@ export default function HeroSection() {
               }}
             />
           ))}
+        </motion.div>
+
+        {/* ── OUTER CIRCLE ARC LEVER DIAL ── */}
+        <motion.div
+          className="absolute inset-0 z-35 pointer-events-none flex items-center justify-center overflow-hidden select-none"
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: uiVisible ? 1 : 0, scale: uiVisible ? 1 : 0.96 }}
+          transition={{ duration: 1.1, ease: "easeOut", delay: 0.2 }}
+        >
+          {/* Circular SVG collar matching outer ring size (Radius = 52.5vh) */}
+          <div className="relative w-[105vh] h-[105vh] pointer-events-none flex items-center justify-center">
+            
+            {/* SVG Arc Track at bottom of the circle */}
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox="0 0 1000 1000"
+            >
+              <defs>
+                <linearGradient id="arcGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#ef4444" stopOpacity="0.8" />
+                  <stop offset="50%" stopColor="#ffffff" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="#ef4444" stopOpacity="0.8" />
+                </linearGradient>
+              </defs>
+
+              {/* Arc path: radius = 485, center = 500,500. Span from -34deg to +34deg around bottom (90deg) */}
+              {/* Polar: 90 - 34 = 56 deg, 90 + 34 = 124 deg */}
+              {/* x1 = 500 + 485*cos(124°), y1 = 500 + 485*sin(124°) */}
+              {/* x2 = 500 + 485*cos(56°), y2 = 500 + 485*sin(56°) */}
+              <path
+                d="M 229 902 A 485 485 0 0 0 771 902"
+                fill="none"
+                stroke="rgba(255,255,255,0.15)"
+                strokeWidth="4"
+                strokeDasharray="4 8"
+              />
+              <path
+                d="M 229 902 A 485 485 0 0 0 771 902"
+                fill="none"
+                stroke="url(#arcGlow)"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+
+              {/* End notch markers */}
+              <circle cx="229" cy="902" r="5" fill="#ef4444" />
+              <circle cx="771" cy="902" r="5" fill="#ef4444" />
+            </svg>
+
+            {/* Draggable Lever Puck Container (Centered at screen, rotated by currentAngleDeg) */}
+            <div
+              className="absolute inset-0 flex items-end justify-center pointer-events-auto cursor-grab active:cursor-grabbing transition-transform duration-75"
+              style={{
+                transform: `rotate(${currentAngleDeg}deg)`,
+                transformOrigin: "center center",
+              }}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+            >
+              {/* The mechanical Lever Handle attached to outer perimeter */}
+              <div className="mb-[2.5vh] flex flex-col items-center group -translate-y-1">
+                {/* Dial puck head */}
+                <div className="w-10 h-7 rounded-full bg-gradient-to-b from-neutral-800 to-black border-2 border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.7)] flex items-center justify-center gap-1 group-hover:scale-110 group-active:scale-95 transition-transform">
+                  <div className="w-1 h-3 rounded-full bg-white/70" />
+                  <div className="w-1 h-3 rounded-full bg-red-500" />
+                  <div className="w-1 h-3 rounded-full bg-white/70" />
+                </div>
+                {/* Pointer tooth locking into outer ring */}
+                <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[6px] border-b-red-500 -mt-0.5" />
+              </div>
+            </div>
+
+            {/* Clickable Terminal Labels on either side of the arc */}
+            <div className="absolute bottom-[4.5vh] left-[20%] pointer-events-auto cursor-pointer group" onClick={() => updateLeverPosition(0)}>
+              <span className={`text-xs md:text-sm font-mono tracking-[0.25em] font-bold transition-all ${leverVal < 0.25 ? "text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]" : "text-white/40 hover:text-white/80"}`}>
+                ◀ TITLE
+              </span>
+            </div>
+
+            <div className="absolute bottom-[4.5vh] right-[20%] pointer-events-auto cursor-pointer group" onClick={() => updateLeverPosition(1)}>
+              <span className={`text-xs md:text-sm font-mono tracking-[0.25em] font-bold transition-all ${leverVal > 0.75 ? "text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]" : "text-white/40 hover:text-white/80"}`}>
+                STATUE ▶
+              </span>
+            </div>
+          </div>
         </motion.div>
 
         {/* ── Date text ── */}
@@ -224,50 +377,12 @@ export default function HeroSection() {
               ANOMALY / 2026
             </span>
 
-            {/* Sound FX Toggle Button */}
-            <button
-              onClick={() => {
-                const next = !isMuted;
-                setIsMuted(next);
-                soundFX.setMuted(next);
-              }}
-              className="px-3 py-1.5 rounded-full border border-white/20 hover:border-red-500/60 bg-black/40 backdrop-blur-sm text-[11px] font-mono tracking-widest text-white/80 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer"
-              aria-label="Toggle Sound FX"
-              title="Toggle Mechanical Sound Effects"
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${isMuted ? "bg-white/30" : "bg-red-500 animate-pulse"}`} />
-              <span>{isMuted ? "SFX OFF" : "SFX ON"}</span>
-            </button>
-
             <button className="flex flex-col gap-1.5 group" aria-label="Toggle menu">
               <span className="w-8 h-[2px] bg-white group-hover:bg-red-500 transition" />
               <span className="w-8 h-[2px] bg-white group-hover:bg-red-500 transition" />
             </button>
           </div>
         </motion.nav>
-
-        {/* ── Interactive HUD Dial (Teaches user to move left/right to decrypt) ── */}
-        <motion.div
-          className="absolute bottom-10 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2 pointer-events-none select-none"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: uiVisible ? 1 : 0, y: uiVisible ? 0 : 12 }}
-          transition={{ duration: 1.0, ease: "easeOut", delay: 0.35 }}
-        >
-          <div className="flex items-center gap-3 px-4 py-1.5 rounded-full bg-black/60 border border-white/10 backdrop-blur-md shadow-2xl">
-            <span className="text-[10px] tracking-[0.25em] uppercase font-mono text-red-400 font-semibold">
-              ◀ TITLE
-            </span>
-            <div className="w-12 h-[2px] bg-white/20 rounded-full relative overflow-hidden">
-              <div className="w-2 h-[2px] bg-red-500 rounded-full animate-[pulse_1.5s_ease-in-out_infinite]" />
-            </div>
-            <span className="text-[10px] tracking-[0.25em] uppercase font-mono text-white/60 font-semibold">
-              STATUE ▶
-            </span>
-          </div>
-          <span className="text-[9px] tracking-[0.28em] uppercase text-white/40 font-mono">
-            MOVE CURSOR TO RESOLVE
-          </span>
-        </motion.div>
       </div>
     </div>
   );

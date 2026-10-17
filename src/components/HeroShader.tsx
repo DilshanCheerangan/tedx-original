@@ -156,39 +156,16 @@ export default function HeroShader({
     // Original scene FPS = 24
     const BASE_FPS = 24;
 
-    let userEngaged = false;
-    let initialUserX = -1;
-
     /* ─── mouse ──────────────────────────────────────────────── */
     const handleMouseMove = (e: MouseEvent) => {
-      const newX = e.clientX / window.innerWidth;
-      const newY = 1.0 - e.clientY / window.innerHeight; // flip Y for GL
-
-      if (!userEngaged) {
-        if (initialUserX < 0) {
-          initialUserX = newX;
-        } else if (Math.abs(newX - initialUserX) > 0.04) {
-          // User intentionally moved cursor by >4% of screen width!
-          userEngaged = true;
-        }
-      }
-
-      if (userEngaged) {
-        rawMX = newX;
-      }
-      rawMY = newY;
+      rawMX = e.clientX / window.innerWidth;
+      rawMY = 1.0 - e.clientY / window.innerHeight; // flip Y for GL
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       const t = e.touches[0];
-      const newX = t.clientX / window.innerWidth;
-      const newY = 1.0 - t.clientY / window.innerHeight;
-
-      if (!userEngaged) {
-        userEngaged = true; // Any touch is intentional
-      }
-      rawMX = newX;
-      rawMY = newY;
+      rawMX = t.clientX / window.innerWidth;
+      rawMY = 1.0 - t.clientY / window.innerHeight;
     };
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("touchmove", handleTouchMove, { passive: true });
@@ -314,16 +291,15 @@ export default function HeroShader({
       lastNow = now;
       const sec = (now - t0) / 1000;
 
-      // ── Mouse momentum smoothing (silky, weighted mechanical dial response) ──
+      // ── Mouse / Lever momentum smoothing ──
       const virtualMX = introOverride?.current ?? null;
       const prevDepthMX = depthMX;
 
       if (virtualMX !== null) {
-        // While intro is running, anchor internal mouse tracking to the virtual position
+        // While intro is running, lock internal tracking to virtual position
         depthMX = virtualMX;
         rawMX = virtualMX;
 
-        // Intro sounds: ratchet clicks and lock chimes
         const delta = Math.abs(depthMX - prevDepthMX);
         if (delta > 0.001) {
           soundFX.playRatchetClick(1.1);
@@ -331,14 +307,10 @@ export default function HeroShader({
         if (depthMX <= 0.28 && prevDepthMX > 0.28) {
           soundFX.playSnapLock("title");
         }
-      } else if (!userEngaged) {
-        // Intro just finished! Keep depthMX anchored at the solved Title position (e.g. 0.20)
-        // until the user deliberately moves their cursor (>4% screen threshold)
       } else {
-        // User intentionally engaged: smoothly interpolate toward their actual mouse position
-        depthMX += (rawMX - depthMX) * 0.12;
+        // Controlled by user / lever
+        depthMX += (rawMX - depthMX) * 0.16;
 
-        // Interactive sounds
         const delta = Math.abs(depthMX - prevDepthMX);
         if (delta > 0.0012) {
           soundFX.playRatchetClick(0.95);
