@@ -19,9 +19,13 @@ interface FBO {
 export default function HeroShader({
   layerMode = 'both',
   introOverride,
+  controlProgressRef,
+  withOutline = false,
 }: {
   layerMode?: 'bg' | 'hero' | 'both';
   introOverride?: React.RefObject<number | null>;
+  controlProgressRef?: React.RefObject<number>;
+  withOutline?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
@@ -201,7 +205,7 @@ export default function HeroShader({
       fboA = makeFBO(W, H);
       fboB = makeFBO(fbmW, fbmH);
 
-      if (layerMode === 'hero') {
+      if (layerMode === 'hero' && withOutline) {
         document.fonts.ready.then(() => {
           const textCanvas = document.createElement('canvas');
           textCanvas.width = W;
@@ -291,7 +295,7 @@ export default function HeroShader({
       lastNow = now;
       const sec = (now - t0) / 1000;
 
-      // ── Mouse / Lever momentum smoothing ──
+      // ── Mouse / Lever / Knob momentum smoothing ──
       const virtualMX = introOverride?.current ?? null;
       const prevDepthMX = depthMX;
 
@@ -307,8 +311,21 @@ export default function HeroShader({
         if (depthMX <= 0.28 && prevDepthMX > 0.28) {
           soundFX.playSnapLock("title");
         }
+      } else if (controlProgressRef && controlProgressRef.current !== undefined) {
+        // Directly driven by orbital knob controller (0.0: title aligned -> 1.0: hero statue aligned)
+        const targetMX = 0.22 + (0.72 - 0.22) * controlProgressRef.current;
+        depthMX += (targetMX - depthMX) * 0.25;
+
+        // Magnetic snap lock sounds
+        if (depthMX <= 0.23) {
+          soundFX.playSnapLock("title");
+        } else if (depthMX >= 0.71) {
+          soundFX.playSnapLock("hero");
+        } else {
+          soundFX.resetSnapState();
+        }
       } else {
-        // Controlled by user / lever
+        // Controlled by user mouse cursor fallback
         depthMX += (rawMX - depthMX) * 0.16;
 
         const delta = Math.abs(depthMX - prevDepthMX);

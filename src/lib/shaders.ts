@@ -269,21 +269,21 @@ void main() {
       0.029    // Ring 11
     );
 
-    // ── MAGNETIC SNAP SETTINGS (Controls how long alignment holds) ──
-    // holdRadius: distance inward toward the center where alignment stays locked
-    float holdRadius = 0.025;
-    // easeRange: soft transition zone into the scrambled middle section
-    float easeRange = 0.080;
+    // ── MAGNETIC SNAP SETTINGS (Tightened so resolution occurs precisely at endpoints) ──
+    // Alignment holds strictly at the boundaries
+    float holdRadius = 0.005;
+    // Immediate response away from endpoints
+    float easeRange = 0.025;
 
-    // ── ALIGNMENT POINT 1: TEXT ALIGNED from 0.0 all the way to 0.28 (Left Edge Zone) ──
-    // Text is 100% aligned from 0.0 to 0.28, and rotates when mouse moves toward 1.0
-    float rawDeltaText = max(0.0, uMousePos.x - 0.28);
+    // ── ALIGNMENT POINT 1: TEXT ALIGNED strictly at 0.0 -> 0.23 (Left / +40° Start Edge Zone) ──
+    // Text resolves right at 0.0 progress (shader X <= 0.23)
+    float rawDeltaText = max(0.0, uMousePos.x - 0.22);
     float tText = smoothstep(holdRadius, holdRadius + easeRange, rawDeltaText);
     float effectiveDeltaText = rawDeltaText * tText;
     float rotText = effectiveDeltaText * speed * 1.7 + textImperfect[ringIndex] * (1.0 - tText);
 
-    // ── ALIGNMENT POINT 2: HERO STATUE ALIGNED from 0.72 all the way to 1.0 (Right Edge Zone) ──
-    // Hero is 100% aligned from 0.72 to 1.0, and rotates when mouse moves toward 0.0
+    // ── ALIGNMENT POINT 2: HERO STATUE ALIGNED strictly at 0.71 -> 1.0 (Right / -40° End Edge Zone) ──
+    // Hero resolves right at 1.0 progress (shader X >= 0.71)
     float rawDeltaHero = max(0.0, 0.72 - uMousePos.x);
     float tHero = smoothstep(holdRadius, holdRadius + easeRange, rawDeltaHero);
     float effectiveDeltaHero = -rawDeltaHero * tHero;

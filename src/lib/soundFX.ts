@@ -29,12 +29,12 @@ class SoundFXController {
     return this.isMuted;
   }
 
-  // Soft mechanical ratchet tick when gears rotate
+  // Ancient heavy stone grinding & mechanical gear scrape during rotation
   public playRatchetClick(pitchMult: number = 1.0) {
     if (this.isMuted) return;
     const now = performance.now();
-    // Throttle clicks so it doesn't sound like static noise
-    if (now - this.lastClickTime < 38) return;
+    // Throttle so fast dragging sounds like continuous textured stone friction
+    if (now - this.lastClickTime < 32) return;
     this.lastClickTime = now;
 
     const ctx = this.getContext();
@@ -42,34 +42,55 @@ class SoundFXController {
 
     try {
       const t = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const filter = ctx.createBiquadFilter();
 
-      // Highpass to give metallic crispness
-      filter.type = "highpass";
-      filter.frequency.setValueAtTime(1400 * pitchMult, t);
+      // ── 1. Granular Stone Scrape (Porous rock friction grain) ──
+      const grainDur = 0.024;
+      const grainSamples = Math.floor(ctx.sampleRate * grainDur);
+      const grainBuf = ctx.createBuffer(1, grainSamples, ctx.sampleRate);
+      const grainData = grainBuf.getChannelData(0);
+      let acc = 0;
+      for (let i = 0; i < grainSamples; i++) {
+        acc = (acc + (Math.random() * 2 - 1) * 0.12) / 1.12;
+        grainData[i] = acc * 2.8;
+      }
+      const grainSrc = ctx.createBufferSource();
+      grainSrc.buffer = grainBuf;
 
-      // Pitch sweep downward quickly (tick effect)
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(800 * pitchMult, t);
-      osc.frequency.exponentialRampToValueAtTime(120, t + 0.018);
+      const grainFilt = ctx.createBiquadFilter();
+      grainFilt.type = "bandpass";
+      grainFilt.frequency.setValueAtTime(450 * pitchMult, t);
+      grainFilt.Q.setValueAtTime(2.2, t);
 
-      gain.gain.setValueAtTime(0.045, t);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.018);
+      const grainGain = ctx.createGain();
+      grainGain.gain.setValueAtTime(0.08, t);
+      grainGain.gain.exponentialRampToValueAtTime(0.001, t + grainDur);
 
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(ctx.destination);
+      grainSrc.connect(grainFilt);
+      grainFilt.connect(grainGain);
+      grainGain.connect(ctx.destination);
+      grainSrc.start(t);
 
-      osc.start(t);
-      osc.stop(t + 0.02);
+      // ── 2. Heavy Stone Tooth Notch / Gear Clunk (Low resonant knock) ──
+      const clunkOsc = ctx.createOscillator();
+      const clunkGain = ctx.createGain();
+      clunkOsc.type = "sine";
+      const startHz = 135 * pitchMult;
+      clunkOsc.frequency.setValueAtTime(startHz, t);
+      clunkOsc.frequency.exponentialRampToValueAtTime(45, t + 0.028);
+
+      clunkGain.gain.setValueAtTime(0.065, t);
+      clunkGain.gain.exponentialRampToValueAtTime(0.001, t + 0.028);
+
+      clunkOsc.connect(clunkGain);
+      clunkGain.connect(ctx.destination);
+      clunkOsc.start(t);
+      clunkOsc.stop(t + 0.03);
     } catch {
       // AudioContext policy catch
     }
   }
 
-  // Deep satisfying mechanical magnetic lock sound when puzzle resolves
+  // Ancient Stone Puzzle Solved Snap & Lock Sound
   public playSnapLock(type: "title" | "hero") {
     if (this.isMuted) return;
     if (this.lastSnappedState === type) return; // Prevent duplicate fire
@@ -81,37 +102,96 @@ class SoundFXController {
     try {
       const t = ctx.currentTime;
 
-      // 1. Heavy resonant "thud / thwack"
-      const osc1 = ctx.createOscillator();
-      const gain1 = ctx.createGain();
-      osc1.type = "sine";
-      const baseFreq = type === "title" ? 180 : 140;
-      osc1.frequency.setValueAtTime(baseFreq, t);
-      osc1.frequency.exponentialRampToValueAtTime(45, t + 0.15);
+      // ── 1. The Instant Stone-Bite "SNAP" (Sharp impact of ancient locking blocks meeting) ──
+      const snapDur = 0.035;
+      const snapSamples = Math.floor(ctx.sampleRate * snapDur);
+      const snapBuf = ctx.createBuffer(1, snapSamples, ctx.sampleRate);
+      const snapData = snapBuf.getChannelData(0);
+      for (let i = 0; i < snapSamples; i++) {
+        // High-energy initial transient spike
+        const decay = Math.exp(-i / (ctx.sampleRate * 0.005));
+        snapData[i] = (Math.random() * 2 - 1) * decay;
+      }
+      const snapSrc = ctx.createBufferSource();
+      snapSrc.buffer = snapBuf;
 
-      gain1.gain.setValueAtTime(0.18, t);
-      gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+      const snapFilter = ctx.createBiquadFilter();
+      snapFilter.type = "bandpass";
+      snapFilter.frequency.setValueAtTime(type === "title" ? 1750 : 1420, t);
+      snapFilter.Q.setValueAtTime(2.5, t);
 
-      osc1.connect(gain1);
-      gain1.connect(ctx.destination);
-      osc1.start(t);
-      osc1.stop(t + 0.17);
+      const snapGain = ctx.createGain();
+      snapGain.gain.setValueAtTime(0.25, t);
+      snapGain.gain.exponentialRampToValueAtTime(0.001, t + snapDur);
 
-      // 2. Metallic latch chime
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.type = "triangle";
-      const chimeFreq = type === "title" ? 1420 : 1050;
-      osc2.frequency.setValueAtTime(chimeFreq, t);
-      osc2.frequency.exponentialRampToValueAtTime(chimeFreq * 0.7, t + 0.22);
+      snapSrc.connect(snapFilter);
+      snapFilter.connect(snapGain);
+      snapGain.connect(ctx.destination);
+      snapSrc.start(t);
 
-      gain2.gain.setValueAtTime(0.08, t);
-      gain2.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      // ── 2. Heavy Stone Tooth Latch Impact (Immediate solid mechanical "CHACK") ──
+      const latchOsc = ctx.createOscillator();
+      const latchGain = ctx.createGain();
+      const latchFilter = ctx.createBiquadFilter();
 
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.start(t);
-      osc2.stop(t + 0.23);
+      latchOsc.type = "triangle";
+      const latchFreq = type === "title" ? 480 : 380;
+      latchOsc.frequency.setValueAtTime(latchFreq, t);
+      latchOsc.frequency.exponentialRampToValueAtTime(110, t + 0.045);
+
+      latchFilter.type = "lowpass";
+      latchFilter.frequency.setValueAtTime(1200, t);
+
+      latchGain.gain.setValueAtTime(0.22, t);
+      latchGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+
+      latchOsc.connect(latchFilter);
+      latchFilter.connect(latchGain);
+      latchGain.connect(ctx.destination);
+
+      latchOsc.start(t);
+      latchOsc.stop(t + 0.055);
+
+      // ── 3. Megalithic Sub-Resonant "THUD" (Heavy stone mass settling into place) ──
+      const thudOsc = ctx.createOscillator();
+      const thudGain = ctx.createGain();
+      thudOsc.type = "sine";
+      const baseSub = type === "title" ? 120 : 95;
+      thudOsc.frequency.setValueAtTime(baseSub, t + 0.005);
+      thudOsc.frequency.exponentialRampToValueAtTime(32, t + 0.22);
+
+      thudGain.gain.setValueAtTime(0.20, t + 0.005);
+      thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+
+      thudOsc.connect(thudGain);
+      thudGain.connect(ctx.destination);
+
+      thudOsc.start(t + 0.005);
+      thudOsc.stop(t + 0.26);
+
+      // ── 4. Ancient Resonant Hollow Chamber Echo (Quick stone crypt chamber resonance) ──
+      const chamberOsc = ctx.createOscillator();
+      const chamberGain = ctx.createGain();
+      const chamberFilter = ctx.createBiquadFilter();
+
+      chamberOsc.type = "sine";
+      const chamberFreq = type === "title" ? 220 : 174.6; // A3 or F3
+      chamberOsc.frequency.setValueAtTime(chamberFreq, t + 0.02);
+
+      chamberFilter.type = "bandpass";
+      chamberFilter.frequency.setValueAtTime(chamberFreq, t + 0.02);
+      chamberFilter.Q.setValueAtTime(6.0, t + 0.02);
+
+      chamberGain.gain.setValueAtTime(0.0001, t);
+      chamberGain.gain.linearRampToValueAtTime(0.07, t + 0.035);
+      chamberGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+
+      chamberOsc.connect(chamberFilter);
+      chamberFilter.connect(chamberGain);
+      chamberGain.connect(ctx.destination);
+
+      chamberOsc.start(t + 0.02);
+      chamberOsc.stop(t + 0.36);
     } catch {
       // AudioContext policy catch
     }
