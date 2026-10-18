@@ -329,6 +329,22 @@ export default function OrbitalController({
               transform: `rotate(${currentAngleDeg - 90}deg)`,
             }}
           />
+
+          {/* ── Top-down ambient key light: subtle white specular rim highlight ── */}
+          <div
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              background:
+                "radial-gradient(ellipse 65% 35% at 50% 8%, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0.25) 45%, transparent 85%)",
+              boxShadow:
+                "inset 0 1.5px 1px 0 rgba(255, 255, 255, 0.65), inset 0 3px 5px -1px rgba(255, 255, 255, 0.25)",
+            }}
+          />
+
+          {/* Delicate sharp glint reflection pin on the upper beveled lip */}
+          <div
+            className="absolute top-[3px] left-1/2 -translate-x-1/2 w-6 h-[2px] rounded-full bg-white/90 blur-[0.4px] pointer-events-none"
+          />
         </div>
 
         {/* ── INSTRUCTION / STATUS LABEL ── */}
